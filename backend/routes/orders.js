@@ -1,17 +1,26 @@
 const express = require('express');
 const router = express.Router();
-const { createOrder, getOrders, getOrderById, updateOrderStatus } = require('../controllers/orderController');
+const Order = require('../models/order');
 
-// Create a new order
-router.post('/create', createOrder);
+// POST create new order
+router.post('/', async (req, res) => {
+  try {
+    const order = new Order(req.body);
+    await order.save();
+    res.status(201).json({ message: 'Order placed!', order });
+  } catch (err) {
+    res.status(400).json({ message: 'Failed to place order', error: err.message });
+  }
+});
 
-// Get all orders
-router.get('/', getOrders);
-
-// Get order by ID
-router.get('/:id', getOrderById);
-
-// Update order status
-router.patch('/:id/status', updateOrderStatus);
+// GET all orders (for dashboard/admin use)
+router.get('/', async (req, res) => {
+  try {
+    const orders = await Order.find().populate('products.productId');
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
+});
 
 module.exports = router;
