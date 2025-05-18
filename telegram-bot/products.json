@@ -1,1 +1,127 @@
-// Placeholder for products.json
+[
+  {
+    "id": "cock_ring_3pack",
+    "name": "Cock Ring - Pack of 3",
+    "price": 80,
+    "category": "Rings"
+  },
+  {
+    "id": "cock_ring_vibe",
+    "name": "Cock Ring Vibrator",
+    "price": 60,
+    "category": "Rings"
+  },
+  {
+    "id": "spikey_jelly_red",
+    "name": "Spikey Jelly (Red)",
+    "price": 160,
+    "category": "Jelly"
+  },
+  {
+    "id": "spikey_jelly_black",
+    "name": "Spikey Jelly (Black)",
+    "price": 160,
+    "category": "Jelly"
+  },
+  {
+    "id": "th_bolitas_jelly",
+    "name": "Th Bolitas Jelly",
+    "price": 160,
+    "category": "Jelly"
+  },
+  {
+    "id": "monogatari_lube_tube",
+    "name": "Monogatari Lube Tube",
+    "price": 120,
+    "category": "Lubes"
+  },
+  {
+    "id": "monogatari_lube_pinhole",
+    "name": "Monogatari Lube Pinhole",
+    "price": 120,
+    "category": "Lubes"
+  },
+  {
+    "id": "monogatari_lube_flavored",
+    "name": "Monogatari Flavored Lube",
+    "price": 200,
+    "category": "Lubes",
+    "variants": ["Peach", "Strawberry", "Cherry"]
+  },
+  {
+    "id": "maxman_tab",
+    "name": "Maxman per Tab",
+    "price": 40,
+    "category": "Supplements"
+  },
+  {
+    "id": "maxman_pad",
+    "name": "Maxman per Pad",
+    "price": 350,
+    "category": "Supplements"
+  },
+  {
+    "id": "ultra_thin_001",
+    "name": "Ultra thin 001 for men natural latex condom",
+    "price": 90,
+    "category": "Condoms",
+    "variants": ["Black", "Long Battle", "Blue", "Naked Pleasure", "Granule Passion"]
+  },
+  {
+    "id": "wired_vibrator_egg",
+    "name": "Portable Wired Vibrator Egg",
+    "price": 130,
+    "category": "Vibrators"
+  },
+  {
+    "id": "delay_collar",
+    "name": "Delay Collar",
+    "price": 200,
+    "category": "Delay"
+  },
+  {
+    "id": "delay_buttplug",
+    "name": "Delay Ejaculation Buttplug",
+    "price": 200,
+    "category": "Delay"
+  },
+  {
+    "id": "eucalyptus_menthol",
+    "name": "Eucalyptus Menthol Food Grade",
+    "price": 1000,
+    "category": "Oils",
+    "variants": ["15-20 (1k)", "25-30 (1.5k)", "35-40 (2k)"]
+  },
+  {
+    "id": "african_dildo",
+    "name": "7 Inches African Version Dildo",
+    "price": 270,
+    "category": "Toys"
+  },
+  {
+    "id": "masturbator_cup",
+    "name": "Masturbator Cup",
+    "price": 120,
+    "category": "Toys",
+    "variants": ["Yellow (Mouth)", "Gray (Arse)", "Black (Vagina)"]
+  },
+  {
+    "id": "mouth_freshener",
+    "name": "Mouth Fresheners",
+    "price": 90,
+    "category": "Essentials",
+    "variants": ["Peach", "Mint"]
+  },
+  {
+    "id": "syringe",
+    "name": "Insulin Syringe",
+    "price": 20,
+    "category": "Medical"
+  },
+  {
+    "id": "sterile_water",
+    "name": "Sterile Water for Injection",
+    "price": 15,
+    "category": "Medical"
+  }
+]
