@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.BOT_TOKEN;
 
-// Initialize bot in webhook mode (important for Render)
+// Initialize bot in webhook mode (Render requires this)
 const bot = new TelegramBot(token, {
   webHook: { port: PORT },
 });
@@ -16,32 +16,35 @@ const bot = new TelegramBot(token, {
 // Middleware
 app.use(bodyParser.json());
 
-// Health check endpoint (Render pings this)
+// Health check route for Render
 app.get('/', (req, res) => {
   res.send('Kutabare Bot is alive!');
 });
 
-// Set webhook to your public Render domain
-bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`);
+// Set Telegram webhook to your public Render domain
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`).then(() => {
+  console.log("Webhook set successfully.");
+}).catch((err) => {
+  console.error("Error setting webhook:", err.message);
+});
 
-// Endpoint that Telegram sends updates to
+// Telegram will send updates here
 app.post(`/bot${token}`, (req, res) => {
   console.log("Update received:", JSON.stringify(req.body, null, 2));
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Basic command: /start
+// Handle /start command
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "Hi! Kutabare Bot reporting for duty!");
 });
 
-// Listen to all messages for keyword 'order'
+// Handle 'order' keyword in any message
 bot.on('message', async (msg) => {
   const text = msg.text?.toLowerCase();
   if (text && text.includes("order")) {
     try {
-      // Forward order info to your backend
       await axios.post('https://kutabare-backend.onrender.com/api/order', {
         chatId: msg.chat.id,
         message: msg.text,
@@ -54,7 +57,11 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Start server (required even with webhooks)
-app.listen(PORT, () => {
-  console.log(`Bot server running on port ${PORT}`);
+// Start server
+app.listen(PORT, (err) => {
+  if (err) {
+    console.error("Server error:", err);
+  } else {
+    console.log(`Bot server running on port ${PORT}`);
+  }
 });
