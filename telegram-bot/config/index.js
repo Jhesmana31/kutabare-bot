@@ -1,4 +1,9 @@
+require('dotenv').config();
+
 module.exports = {
-  BOT_TOKEN: "7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw",
-  ADMIN_ID: "7699555744"
+  botToken: process.env.BOT_TOKEN,
+  telegramAdminId: process.env.ADMIN_ID,
+  mongoUri: process.env.MONGO_URI,
+  storeName: "Kutabare Online Shop",
+  paymentLink: "https://app.bux.ph/kutabarestore", // if still using BUx
 };
