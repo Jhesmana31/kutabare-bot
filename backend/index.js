@@ -13,6 +13,7 @@ app.get("/", (req, res) => {
 });
 
 app.use('/api/orders', orderRoutes);
+app.use('/api/order', orderRoutes); // accepts singular too
 
 const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI, {
