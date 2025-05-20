@@ -1,33 +1,54 @@
-const fs = require('fs');
-const path = require('path');
+const config = require('./config');
 
-const products = JSON.parse(fs.readFileSync(path.join(__dirname, 'products.json')));
+let userSessions = {};
 
-const handleStart = async (ctx) => {
-  const categories = [...new Set(products.map(p => p.category))];
-  const buttons = categories.map(c => [{ text: c }]);
-
-  await ctx.reply('Choose a product category:', {
-    reply_markup: {
-      keyboard: buttons,
-      resize_keyboard: true,
-    },
+function handleCategory(bot, chatId, category) {
+  userSessions[chatId] = { category };
+  const items = require('./products')[category];
+  const buttons = items.map(item => [{ text: `${item.name} - ₱${item.price}` }]);
+  buttons.push([{ text: "Back to Categories" }]);
+  bot.sendMessage(chatId, `Choose a product from *${category}*`, {
+    parse_mode: 'Markdown',
+    reply_markup: { keyboard: buttons, resize_keyboard: true }
   });
-};
+}
 
-const handleOrder = async (ctx) => {
-  const message = ctx.message.text;
-  const category = message.trim();
-  const filtered = products.filter(p => p.category === category);
+function handleOrderFlow(bot, msg) {
+  const chatId = msg.chat.id;
+  const session = userSessions[chatId] || {};
 
-  if (filtered.length > 0) {
-    for (const item of filtered) {
-      const caption = `${item.name} - ₱${item.price}`;
-      await ctx.reply(caption);
-    }
-  } else {
-    await ctx.reply('Please choose a valid category by tapping the buttons.');
+  if (msg.text === "Back to Categories") {
+    delete userSessions[chatId];
+    const categories = Object.keys(require('./products'));
+    const buttons = categories.map(cat => [{ text: cat }]);
+    bot.sendMessage(chatId, 'Choose a category:', {
+      reply_markup: { keyboard: buttons, resize_keyboard: true }
+    });
+    return;
   }
-};
 
-module.exports = { handleStart, handleOrder };
+  if (!session.category) return;
+
+  const productMatch = msg.text.match(/^(.*?) - ₱(\d+)/);
+  if (productMatch) {
+    const product = productMatch[1];
+    const price = productMatch[2];
+    userSessions[chatId].product = product;
+    userSessions[chatId].price = price;
+
+    bot.sendMessage(chatId, `Send your contact number & delivery option (e.g. Pick up or Same-day):`);
+  } else if (session.product && !session.contactInfo) {
+    userSessions[chatId].contactInfo = msg.text;
+    const orderSummary = `New Order:\n\nProduct: ${session.product}\nPrice: ₱${session.price}\nCustomer ID: ${chatId}\nContact Info: ${msg.text}`;
+    
+    bot.sendMessage(config.ADMIN_ID, orderSummary);
+    bot.sendMessage(chatId, `Thank you! Your order for *${session.product}* (₱${session.price}) is received. Pay via QR to confirm.`, {
+      parse_mode: 'Markdown'
+    });
+
+    // QR code would be dynamically generated here when Netbank API is added.
+    delete userSessions[chatId];
+  }
+}
+
+module.exports = { handleCategory, handleOrderFlow };
