@@ -1,5 +1,4 @@
-module.exports = {
-  "Cock Rings & Toys": [
+module.exports = {"Cock Rings & Toys": [
     { name: "Cock Ring - Pack of 3", price: 80 },
     { name: "Cock Ring Vibrator", price: 60 },
     { name: "Spikey Jelly (Red)", price: 160 },
