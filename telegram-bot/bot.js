@@ -12,21 +12,22 @@ const bot = new TelegramBot(token);
 // Middleware
 app.use(bodyParser.json());
 
-// Set webhook
+// Set webhook to your public Render URL
 bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`);
 
-// Telegram sends updates here
+// Telegram will send updates here
 app.post(`/bot${token}`, (req, res) => {
+  console.log("Update received:", JSON.stringify(req.body, null, 2));
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Start command
+// Handle /start
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "Hi! Kutabare Bot reporting for duty!");
 });
 
-// Order message handler
+// Handle messages that include 'order'
 bot.on('message', async (msg) => {
   const text = msg.text?.toLowerCase();
   if (text && text.includes("order")) {
@@ -37,7 +38,7 @@ bot.on('message', async (msg) => {
       });
       bot.sendMessage(msg.chat.id, "Got it! Order is being processed.");
     } catch (err) {
-      console.error(err.message);
+      console.error("Error forwarding to backend:", err.message);
       bot.sendMessage(msg.chat.id, "Oops! Backend issue. Try again later.");
     }
   }
