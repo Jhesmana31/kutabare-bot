@@ -1,170 +1,177 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const bodyParser = require('body-parser');
 const axios = require('axios');
+const products = require('./products');
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token);
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const productData = require('./data/products'); // product list with categories/variants
-const userSessions = {};
+// Middleware
+app.use(bodyParser.json());
 
+// Set webhook
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`);
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Order flow state
+const userState = {};
+
+// Start
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  userSessions[chatId] = { products: [] };
-
-  const categories = [...new Set(productData.map(p => p.category))];
-  const buttons = categories.map(cat => [{ text: cat, callback_data: `cat_${cat}` }]);
-
-  bot.sendMessage(chatId, "Welcome to Kutabare Online Shop! Choose a category:", {
-    reply_markup: { inline_keyboard: buttons }
+  userState[chatId] = {};
+  bot.sendMessage(chatId, 'Hi! I’m Kutabare Bot! Ready to take your spicy order.', {
+    reply_markup: {
+      inline_keyboard: Object.keys(products).map((cat) => [
+        { text: cat, callback_data: `cat:${cat}` },
+      ]),
+    },
   });
 });
 
+// Handle button actions
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
-  const session = userSessions[chatId] || { products: [] };
   const data = query.data;
 
-  if (data.startsWith("cat_")) {
-    const category = data.split("cat_")[1];
-    const items = productData.filter(p => p.category === category);
+  if (data.startsWith('cat:')) {
+    const category = data.split(':')[1];
+    userState[chatId].category = category;
 
-    const buttons = items.map(item => [{
-      text: item.name,
-      callback_data: item.variants ? `varsel_${item.name}` : `qty_${item.name}`
-    }]);
-    buttons.push([{ text: "Back to Categories", callback_data: "back_categories" }]);
+    const items = products[category];
+    const buttons = items.map((item, i) => [
+      { text: item.name, callback_data: `prod:${i}` },
+    ]);
 
-    bot.editMessageText(`Products under *${category}*`, {
+    bot.editMessageText(`Select a product from *${category}*`, {
       chat_id: chatId,
       message_id: query.message.message_id,
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: buttons }
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: buttons },
     });
   }
 
-  else if (data === "back_categories") {
-    const categories = [...new Set(productData.map(p => p.category))];
-    const buttons = categories.map(cat => [{ text: cat, callback_data: `cat_${cat}` }]);
-    bot.editMessageText("Choose a category:", {
-      chat_id: chatId,
-      message_id: query.message.message_id,
-      reply_markup: { inline_keyboard: buttons }
-    });
-  }
+  else if (data.startsWith('prod:')) {
+    const index = parseInt(data.split(':')[1]);
+    const category = userState[chatId].category;
+    const item = products[category][index];
+    userState[chatId].product = item;
 
-  else if (data.startsWith("varsel_")) {
-    const productName = data.split("varsel_")[1];
-    const product = productData.find(p => p.name === productName);
-    const buttons = product.variants.map(v => [{
-      text: `${v} - ₱${product.price}`,
-      callback_data: `qty_${productName}__${v}`
-    }]);
-    buttons.push([{ text: "Back", callback_data: `cat_${product.category}` }]);
-
-    bot.editMessageText(`Choose a variant for *${productName}*`, {
-      chat_id: chatId,
-      message_id: query.message.message_id,
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: buttons }
-    });
-  }
-
-  else if (data.startsWith("qty_")) {
-    const [productName, variant] = data.split("qty_")[1].split("__");
-    const product = productData.find(p => p.name === productName);
-    const itemLabel = variant ? `${productName} (${variant})` : productName;
-
-    const buttons = [1, 2, 3, 4, 5].map(qty => [{
-      text: `${qty}`,
-      callback_data: `add_${productName}__${variant || "none"}__${qty}`
-    }]);
-    buttons.push([{ text: "Back", callback_data: `cat_${product.category}` }]);
-
-    bot.editMessageText(`How many *${itemLabel}*?`, {
-      chat_id: chatId,
-      message_id: query.message.message_id,
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: buttons }
-    });
-  }
-
-  else if (data.startsWith("add_")) {
-    const [productName, variant, quantity] = data.split("add_")[1].split("__");
-    const product = productData.find(p => p.name === productName);
-
-    session.products.push({
-      name: productName + (variant !== "none" ? ` (${variant})` : ""),
-      price: product.price,
-      quantity: parseInt(quantity)
-    });
-
-    userSessions[chatId] = session;
-
-    bot.sendMessage(chatId, `✅ Added ${quantity} x ${productName} to your cart.`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Add More", callback_data: "back_categories" }],
-          [{ text: "Checkout", callback_data: "checkout" }]
-        ]
-      }
-    });
-  }
-
-  else if (data === "checkout") {
-    bot.sendMessage(chatId, "Choose delivery option:", {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Pick Up", callback_data: "delivery_pickup" }],
-          [{ text: "Same Day Delivery", callback_data: "delivery_delivery" }]
-        ]
-      }
-    });
-  }
-
-  else if (data.startsWith("delivery_")) {
-    const option = data.split("delivery_")[1];
-    session.deliveryOption = option;
-
-    if (option === "delivery") {
-      bot.sendMessage(chatId, "Please send your *delivery address*:", { parse_mode: "Markdown" });
-      session.awaitingAddress = true;
+    if (item.variants) {
+      const buttons = item.variants.map((v) => [
+        { text: v, callback_data: `var:${v}` },
+      ]);
+      bot.sendMessage(chatId, `Choose variant for *${item.name}*`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buttons },
+      });
     } else {
-      finalizeOrder(chatId);
+      userState[chatId].variant = null;
+      askQuantity(chatId);
+    }
+  }
+
+  else if (data.startsWith('var:')) {
+    userState[chatId].variant = data.split(':')[1];
+    askQuantity(chatId);
+  }
+
+  else if (data.startsWith('qty:')) {
+    userState[chatId].quantity = parseInt(data.split(':')[1]);
+    askDelivery(chatId);
+  }
+
+  else if (data.startsWith('delivery:')) {
+    userState[chatId].deliveryOption = data.split(':')[1];
+    if (userState[chatId].deliveryOption === 'delivery') {
+      bot.sendMessage(chatId, 'Drop your address please:');
+      userState[chatId].expecting = 'address';
+    } else {
+      userState[chatId].address = 'Pick up';
+      askContact(chatId);
     }
   }
 });
 
-bot.on('message', async (msg) => {
+// Collect address/contact
+bot.on('message', (msg) => {
   const chatId = msg.chat.id;
-  const session = userSessions[chatId];
+  const state = userState[chatId];
+  if (!state) return;
 
-  if (session?.awaitingAddress) {
-    session.address = msg.text;
-    session.awaitingAddress = false;
+  if (state.expecting === 'address') {
+    state.address = msg.text;
+    state.expecting = null;
+    askContact(chatId);
+  } else if (state.expecting === 'contact') {
+    state.contact = msg.text;
+    state.expecting = null;
     finalizeOrder(chatId);
   }
 });
 
-async function finalizeOrder(chatId) {
-  const session = userSessions[chatId];
-  const total = session.products.reduce((sum, p) => sum + p.price * p.quantity, 0);
+// Helpers
+function askQuantity(chatId) {
+  const buttons = [1, 2, 3, 4, 5].map((n) => [
+    { text: `${n}`, callback_data: `qty:${n}` },
+  ]);
+  bot.sendMessage(chatId, 'How many would you like?', {
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
 
-  const payload = {
+function askDelivery(chatId) {
+  const buttons = [
+    [{ text: 'Pick up', callback_data: 'delivery:pickup' }],
+    [{ text: 'Delivery', callback_data: 'delivery:delivery' }],
+  ];
+  bot.sendMessage(chatId, 'Delivery option?', {
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+function askContact(chatId) {
+  bot.sendMessage(chatId, 'Please enter your contact number:');
+  userState[chatId].expecting = 'contact';
+}
+
+async function finalizeOrder(chatId) {
+  const state = userState[chatId];
+  const productName = state.product.name + (state.variant ? ` - ${state.variant}` : '');
+  const total = state.product.price * state.quantity;
+
+  const order = {
     telegramId: chatId,
-    products: session.products,
+    name: productName,
+    contact: state.contact,
+    deliveryOption: state.deliveryOption,
+    address: state.address,
+    products: [{
+      name: productName,
+      price: state.product.price,
+      quantity: state.quantity,
+    }],
     totalAmount: total,
-    deliveryOption: session.deliveryOption,
-    address: session.address || '',
-    paymentStatus: 'pending'
   };
 
   try {
-    await axios.post('https://kutabare-backend.onrender.com/api/orders', payload);
-    bot.sendMessage(chatId, `Order placed! Total: ₱${total}. Payment pending.`);
+    await axios.post(`${process.env.BACKEND_URL}/api/orders`, order);
+    bot.sendMessage(chatId, `Order placed! Total: ₱${total}\nWe’ll contact you soon.`);
+    delete userState[chatId];
   } catch (err) {
-    console.error(err.message);
-    bot.sendMessage(chatId, "Error placing your order. Try again later.");
+    console.error("Order error:", err.message);
+    bot.sendMessage(chatId, "Oops! Something went wrong while placing your order.");
   }
-
-  delete userSessions[chatId];
 }
+
+// Express startup
+app.listen(PORT, () => {
+  console.log(`Bot server running on port ${PORT}`);
+});
