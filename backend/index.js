@@ -1,30 +1,26 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
-const orderRoutes = require('./routes/orderRoutes');
+require('dotenv').config();
 
-dotenv.config();
+const orderRoutes = require('./routes/orders');
 
 const app = express();
-
-// Middlewares
 app.use(cors());
 app.use(express.json());
+app.get("/", (req, res) => {
+  res.send("Kutabare backend is running!");
+});
 
-// Routes
 app.use('/api/orders', orderRoutes);
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI, {
+const PORT = process.env.PORT || 5000;
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('MongoDB connected'))
-.catch((err) => console.error('MongoDB connection error:', err));
-
-// Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+.then(() => {
+  console.log('MongoDB connected');
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+})
+.catch(err => console.error(err));
