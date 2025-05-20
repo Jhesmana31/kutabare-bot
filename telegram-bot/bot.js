@@ -7,31 +7,41 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token);
+
+// Initialize bot in webhook mode (important for Render)
+const bot = new TelegramBot(token, {
+  webHook: { port: PORT },
+});
 
 // Middleware
 app.use(bodyParser.json());
 
-// Set webhook to your public Render URL
+// Health check endpoint (Render pings this)
+app.get('/', (req, res) => {
+  res.send('Kutabare Bot is alive!');
+});
+
+// Set webhook to your public Render domain
 bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`);
 
-// Telegram will send updates here
+// Endpoint that Telegram sends updates to
 app.post(`/bot${token}`, (req, res) => {
   console.log("Update received:", JSON.stringify(req.body, null, 2));
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Handle /start
+// Basic command: /start
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "Hi! Kutabare Bot reporting for duty!");
 });
 
-// Handle messages that include 'order'
+// Listen to all messages for keyword 'order'
 bot.on('message', async (msg) => {
   const text = msg.text?.toLowerCase();
   if (text && text.includes("order")) {
     try {
+      // Forward order info to your backend
       await axios.post('https://kutabare-backend.onrender.com/api/order', {
         chatId: msg.chat.id,
         message: msg.text,
@@ -44,7 +54,7 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Start server
+// Start server (required even with webhooks)
 app.listen(PORT, () => {
   console.log(`Bot server running on port ${PORT}`);
 });
