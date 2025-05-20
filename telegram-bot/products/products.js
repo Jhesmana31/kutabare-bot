@@ -1,107 +1,45 @@
-module.exports = [
-  {
-    name: 'Cock Ring - Pack of 3',
-    category: 'Cock Rings & Toys',
-    price: 80
-  },
-  {
-    name: 'Cock Ring Vibrator',
-    category: 'Cock Rings & Toys',
-    price: 60
-  },
-  {
-    name: 'Spikey Jelly (Red)',
-    category: 'Cock Rings & Toys',
-    price: 160
-  },
-  {
-    name: 'Spikey Jelly (Black)',
-    category: 'Cock Rings & Toys',
-    price: 160
-  },
-  {
-    name: '"Th Bolitas" Jelly',
-    category: 'Cock Rings & Toys',
-    price: 160
-  },
-  {
-    name: 'Monogatari Lube Tube',
-    category: 'Lubes & Condoms',
-    price: 120
-  },
-  {
-    name: 'Monogatari Lube Pinhole',
-    category: 'Lubes & Condoms',
-    price: 120
-  },
-  {
-    name: 'Monogatari Flavored Lube',
-    category: 'Lubes & Condoms',
-    price: 200,
-    variants: ['Peach', 'Strawberry', 'Cherry']
-  },
-  {
-    name: 'Maxman per Tab',
-    category: 'Performance Enhancers',
-    price: 40
-  },
-  {
-    name: 'Maxman per Pad',
-    category: 'Performance Enhancers',
-    price: 400
-  },
-  {
-    name: 'Ultra thin 001 Condoms',
-    category: 'Lubes & Condoms',
-    price: 90,
-    variants: ['Black', 'Long Battle', 'Blue', 'Naked Pleasure', 'Granule Passion']
-  },
-  {
-    name: 'Portable Wired Vibrator Egg',
-    category: 'Cock Rings & Toys',
-    price: 130
-  },
-  {
-    name: 'Delay Collar',
-    category: 'Spicy Accessories',
-    price: 200
-  },
-  {
-    name: 'Delay Ejaculation Buttplug',
-    category: 'Spicy Accessories',
-    price: 200
-  },
-  {
-    name: 'Eucalyptus Menthol Food Grade',
-    category: 'Essentials',
-    variants: ['15-20 (₱1000)', '25-30 (₱1500)', '35-40 (₱2000)'],
-    price: 1000
-  },
-  {
-    name: '7 Inches African Version Dildo',
-    category: 'Cock Rings & Toys',
-    price: 270
-  },
-  {
-    name: 'Masturbator Cup',
-    category: 'Cock Rings & Toys',
-    price: 120,
-    variants: ['Yellow (Mouth)', 'Gray (Arse)', 'Black (Vagina)']
-  },
-  {
-    name: 'Mouth Fresheners',
-    category: 'Essentials',
-    price: 90,
-    variants: ['Peach', 'Mint']
-  },
-  {
-    name: 'Insulin Syringe',
-    category: 'Essentials',
-    price: 20
-  },
-  {
-    name: 'Sterile Water for Injection',
-    category: 'Essentials',
-    price: 15
+module.exports = {
+  categories: {
+    "Cock Rings & Toys": [
+      { name: "Cock Ring - Pack of 3", price: 80 },
+      { name: "Cock Ring Vibrator", price: 60 },
+      { name: "Spikey Jelly (Red)", price: 160 },
+      { name: "Spikey Jelly (Black)", price: 160 },
+      { name: "\"Th Bolitas\" Jelly", price: 160 },
+      { name: "Portable Wired Vibrator Egg", price: 130 },
+      { name: "7 Inches African Version Dildo", price: 270 },
+      { name: "Delay Collar", price: 200 },
+      { name: "Delay Ejaculation Buttplug", price: 200 },
+      { name: "Masturbator Cup - Yellow (Mouth)", price: 120 },
+      { name: "Masturbator Cup - Gray (Arse)", price: 120 },
+      { name: "Masturbator Cup - Black (Vagina)", price: 120 }
+    ],
+    "Lubes & Condoms": [
+      { name: "Monogatari Lube Tube", price: 120 },
+      { name: "Monogatari Lube Pinhole", price: 120 },
+      { name: "Monogatari Flavored Lube - Peach", price: 200 },
+      { name: "Monogatari Flavored Lube - Strawberry", price: 200 },
+      { name: "Monogatari Flavored Lube - Cherry", price: 200 },
+      { name: "Ultra thin 001 Condom - Black", price: 90 },
+      { name: "Ultra thin 001 Condom - Long Battle", price: 90 },
+      { name: "Ultra thin 001 Condom - Blue", price: 90 },
+      { name: "Ultra thin 001 Condom - Naked Pleasure", price: 90 },
+      { name: "Ultra thin 001 Condom - Granule Passion", price: 90 }
+    ],
+    "Performance Enhancers": [
+      { name: "Maxman per Tab", price: 40 },
+      { name: "Maxman per Pad", price: 400 }
+    ],
+    "Spicy Accessories": [
+      { name: "Eucalyptus Menthol Food Grade - 15-20", price: 1000 },
+      { name: "Eucalyptus Menthol Food Grade - 25-30", price: 1500 },
+      { name: "Eucalyptus Menthol Food Grade - 35-40", price: 2000 }
+    ],
+    "Essentials": [
+      { name: "Mouth Freshener - Peach", price: 90 },
+      { name: "Mouth Freshener - Mint", price: 90 },
+      { name: "Insulin Syringe", price: 20 },
+      { name: "Sterile Water for Injection", price: 15 }
+    ]
   }
-];
+};
