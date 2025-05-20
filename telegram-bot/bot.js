@@ -43,9 +43,8 @@ bot.on('message', async (msg) => {
   const text = msg.text?.toLowerCase();
   if (text && text.includes("order")) {
     try {
-      await axios.post('https://kutabare-backend.onrender.com/api/order', {
-        chatId: msg.chat.id,
-        message: msg.text,
+      await axios.post('https://kutabare-backend.onrender.com/api/orders', {
+  chatId: msg.chat.id,message: msg.text,
       });
       bot.sendMessage(msg.chat.id, "Got it! Order is being processed.");
     } catch (err) {
