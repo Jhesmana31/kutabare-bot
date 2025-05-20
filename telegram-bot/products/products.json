@@ -1,12 +1,11 @@
-module.exports = {"Cock Rings & Toys": [
+module.exports = {
+  "Cock Rings & Toys": [
     { name: "Cock Ring - Pack of 3", price: 80 },
     { name: "Cock Ring Vibrator", price: 60 },
     { name: "Spikey Jelly (Red)", price: 160 },
     { name: "Spikey Jelly (Black)", price: 160 },
-    { name: "\"Th Bolitas\" Jelly", price: 160 },
+    { name: "Th Bolitas Jelly", price: 160 },
     { name: "Portable Wired Vibrator Egg", price: 130 },
-    { name: "Delay Collar", price: 200 },
-    { name: "Delay Ejaculation Buttplug", price: 200 },
     { name: "7 Inches African Version Dildo", price: 270 },
     { name: "Masturbator Cup - Yellow (Mouth)", price: 120 },
     { name: "Masturbator Cup - Gray (Arse)", price: 120 },
@@ -29,14 +28,16 @@ module.exports = {"Cock Rings & Toys": [
     { name: "Maxman per Pad", price: 400 }
   ],
   "Spicy Accessories": [
-    { name: "Eucalyptus Menthol - 15-20", price: 1000 },
-    { name: "Eucalyptus Menthol - 25-30", price: 1500 },
-    { name: "Eucalyptus Menthol - 35-40", price: 2000 }
+    { name: "Delay Collar", price: 200 },
+    { name: "Delay Ejaculation Buttplug", price: 200 }
   ],
   "Essentials": [
     { name: "Mouth Freshener - Peach", price: 90 },
     { name: "Mouth Freshener - Mint", price: 90 },
     { name: "Insulin Syringe", price: 20 },
-    { name: "Sterile Water for Injection", price: 15 }
+    { name: "Sterile Water for Injection", price: 15 },
+    { name: "Eucalyptus Menthol 15-20", price: 1000 },
+    { name: "Eucalyptus Menthol 25-30", price: 1500 },
+    { name: "Eucalyptus Menthol 35-40", price: 2000 }
   ]
 };
