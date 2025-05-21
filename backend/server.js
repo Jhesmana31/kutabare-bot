@@ -5,6 +5,12 @@ const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
 
+const TelegramBot = require('node-telegram-bot-api');
+const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+
+// Set webhook URL (optional if you already set it manually once)
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
