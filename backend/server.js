@@ -126,8 +126,10 @@ app.post('/upload-qr/:id', upload.single('qr'), async (req, res) => {
 
 app.listen(PORT, async () => {
   try {
-    await axios.post(`${TELEGRAM_API}/setWebhook`, {
-      url: `${WEBHOOK_URL}/bot${BOT_TOKEN}`,
+    await axios.get(`${TELEGRAM_API}/setWebhook`, {
+      params: {
+        url: `${WEBHOOK_URL}/bot${BOT_TOKEN}`
+      }
     });
     console.log('Webhook set and server running on port', PORT);
   } catch (err) {
