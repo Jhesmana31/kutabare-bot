@@ -1,34 +1,89 @@
-import { useEffect, useState } from 'react'; import { Card, CardContent } from '@/components/ui/card'; import { Button } from '@/components/ui/button'; import { motion } from 'framer-motion'; import axios from 'axios';
+import React from 'react';
 
-interface Order { _id: string; name: string; product: string; status: string; }
+// Replace this with your actual logo path or URL
+import logo from './assets/kutabare-logo.png';
 
-export default function Dashboard() { const [orders, setOrders] = useState<Order[]>([]);
+const orders = [
+  {
+    id: 1,
+    customer: 'Juan Dela Cruz',
+    product: 'Cock Ring Pack of 3',
+    quantity: 2,
+    status: 'Pending',
+  },
+  {
+    id: 2,
+    customer: 'Maria Clara',
+    product: 'Monogatari Flavored Lube (Peach)',
+    quantity: 1,
+    status: 'Completed',
+  },
+];
 
-useEffect(() => { fetchOrders(); }, []);
+const statusColors: Record<string, string> = {
+  Pending: '#f59e0b',
+  Completed: '#10b981',
+  Cancelled: '#ef4444',
+};
 
-const fetchOrders = async () => { const res = await axios.get('/api/orders'); setOrders(res.data); };
+export default function App() {
+  return (
+    <div style={{
+      fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif',
+      backgroundColor: '#1E1E2F',
+      minHeight: '100vh',
+      color: '#eee',
+      padding: 20,
+    }}>
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', marginBottom: 30 }}>
+        <img src={logo} alt="Kutabare Logo" style={{ height: 50, marginRight: 20 }} />
+        <h1 style={{ fontWeight: 'bold', fontSize: 28, color: '#D946EF' }}>
+          Kutabare Online Shop - Orders
+        </h1>
+      </header>
 
-const updateStatus = async (id: string, newStatus: string) => { await axios.post('/api/update-order', { id, status: newStatus }); fetchOrders(); };
-
-return ( <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 text-white p-4"> <header className="text-center mb-6"> <motion.h1 initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-4xl font-bold text-pink-400"> Kutabare Online Shop </motion.h1> <p className="text-teal-300">Order Dashboard</p> </header>
-
-<div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-    {orders.map(order => (
-      <Card key={order._id} className="bg-white text-black shadow-xl rounded-2xl">
-        <CardContent className="p-4">
-          <h2 className="text-xl font-semibold">{order.name}</h2>
-          <p className="text-gray-700">Product: {order.product}</p>
-          <p className="text-sm mt-1">Status: {order.status}</p>
-          <div className="mt-3 flex gap-2">
-            <Button onClick={() => updateStatus(order._id, 'Preparing')}>Preparing</Button>
-            <Button onClick={() => updateStatus(order._id, 'Out for delivery')}>Deliver</Button>
-            <Button onClick={() => updateStatus(order._id, 'Completed')}>Done</Button>
+      {/* Orders container */}
+      <div style={{
+        display: 'grid',
+        gap: 20,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      }}>
+        {orders.map(order => (
+          <div
+            key={order.id}
+            style={{
+              backgroundColor: '#2A2A3F',
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+              transition: 'transform 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.03)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            <h2 style={{ margin: '0 0 10px', color: '#A78BFA' }}>{order.product}</h2>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Customer:</strong> {order.customer}
+            </p>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Quantity:</strong> {order.quantity}
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Status:</strong>{' '}
+              <span style={{
+                padding: '4px 10px',
+                borderRadius: 20,
+                backgroundColor: statusColors[order.status] || '#888',
+                color: 'white',
+                fontWeight: '600',
+              }}>
+                {order.status}
+              </span>
+            </p>
           </div>
-        </CardContent>
-      </Card>
-    ))}
-  </div>
-</div>
-
-); }
-
+        ))}
+      </div>
+    </div>
+  );
+}
