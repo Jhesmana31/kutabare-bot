@@ -209,7 +209,7 @@ bot.on('message', (msg) => {
     const summary = `New Order Received:\n\nName: ${session.name}\nMobile: ${session.number}\nAddress: ${session.address}\nDelivery: ${session.delivery}\n\nItems:\n${orderDetails}\n\nTotal: ₱${orderTotal}`;
 
     // Send to Admin
-    bot.sendMessage(adminId, summary);
+    bot.sendMessage(adminId, 'Bot started and ready!').catch(console.error);
 
     // Show Payment Link to User
     const payLink = `https://api.netbank.com/qrph/generate?amount=${orderTotal}&ref=${chatId}-${Date.now()}`;
