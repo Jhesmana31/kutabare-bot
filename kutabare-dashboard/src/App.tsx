@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Replace this with your actual logo path or URL
-import logo from './assets/kutabare-logo.png';
+
 
 const orders = [
   {
