@@ -1,8 +1,9 @@
-const TelegramBot = require('node-telegram-bot-api');
+const TelegramBot = require('node-telegram-bot-api');;
 const axios = require('axios');
 require('dotenv').config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
