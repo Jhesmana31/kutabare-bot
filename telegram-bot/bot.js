@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express'); // you forgot this!
+const express = require('express');
 const bodyParser = require('body-parser');
 
 // CONFIG
@@ -86,7 +86,7 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// CATEGORY SELECTION
+// CATEGORY SELECTION & ORDER FLOW
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -94,7 +94,7 @@ bot.on('message', (msg) => {
 
   if (products[text]) {
     session.selectedCategory = text;
-    const buttons = products[text].map(p => ([{ text: p.name }]));
+    const buttons = products[text].map(p => ([{ text: `${p.name} - ₱${p.price}` }]));
     buttons.push([{ text: 'Back to Categories' }]);
     bot.sendMessage(chatId, `Choose a product from *${text}*:`, {
       parse_mode: 'Markdown',
@@ -104,7 +104,7 @@ bot.on('message', (msg) => {
   }
 
   const allProducts = [].concat(...Object.values(products));
-  const selected = allProducts.find(p => p.name === text);
+  const selected = allProducts.find(p => text.startsWith(p.name));
 
   if (text === 'Back to Categories') {
     session.cart = session.cart || [];
@@ -114,46 +114,32 @@ bot.on('message', (msg) => {
     });
     return;
   }
+
   if (selected) {
     session.selectedProduct = selected;
-    if (selected.variants) {
-      const variantButtons = selected.variants.map(v => ([{ text: v }]));
-      bot.sendMessage(chatId, 'Choose a variant:', {
-        reply_markup: { keyboard: variantButtons, resize_keyboard: true }
-      });
-    } else {
-      session.variant = null;
-      bot.sendMessage(chatId, 'Enter quantity:');
-    }
-    return;
-  }
-
-  if (session.selectedProduct && session.selectedProduct.variants && session.selectedProduct.variants.includes(text)) {
-    session.variant = text;
-    bot.sendMessage(chatId, 'Enter quantity:');
+    session.variant = null; // no variants for now
+    bot.sendMessage(chatId, `How many *${selected.name}* would you like to order?`, { parse_mode: 'Markdown' });
     return;
   }
 
   if (session.selectedProduct) {
     const quantity = parseInt(text);
     if (isNaN(quantity) || quantity <= 0) {
-      bot.sendMessage(chatId, 'Invalid quantity. Please enter a number.');
+      bot.sendMessage(chatId, 'Please enter a valid number for quantity.');
       return;
     }
 
     const item = {
       productName: session.selectedProduct.name,
-      variantName: session.variant || null,
       quantity,
       total: session.selectedProduct.price * quantity
     };
     session.cart.push(item);
     session.selectedProduct = null;
-    session.variant = null;
 
     let cartSummary = 'Current Cart:\n';
     session.cart.forEach((i, idx) => {
-      cartSummary += `${idx + 1}. ${i.productName}${i.variantName ? ` (${i.variantName})` : ''} x${i.quantity} = ₱${i.total}\n`;
+      cartSummary += `${idx + 1}. ${i.productName} x${i.quantity} = ₱${i.total}\n`;
     });
     const totalAmount = session.cart.reduce((sum, i) => sum + i.total, 0);
     cartSummary += `\nTotal: ₱${totalAmount}`;
@@ -179,7 +165,7 @@ bot.on('message', (msg) => {
   }
 
   if (text === 'Proceed to Checkout') {
-    bot.sendMessage(chatId, 'Delivery Option?\n\nPick-up or Same-day Delivery?', {
+    bot.sendMessage(chatId, 'Choose delivery option:', {
       reply_markup: {
         keyboard: [[{ text: 'Pick-up' }], [{ text: 'Same-day Delivery' }]],
         resize_keyboard: true
@@ -204,7 +190,7 @@ bot.on('message', (msg) => {
 
   if (session.collecting === 'number') {
     session.number = text;
-    bot.sendMessage(chatId, 'Enter delivery address (or type "Pick-up" again if none):');
+    bot.sendMessage(chatId, 'Enter delivery address (or type "Pick-up" if none):');
     session.collecting = 'address';
     return;
   }
@@ -215,26 +201,23 @@ bot.on('message', (msg) => {
 
     const orderTotal = session.cart.reduce((sum, i) => sum + i.total, 0);
     const orderDetails = session.cart.map(i => (
-      `${i.productName}${i.variantName ? ` (${i.variantName})` : ''} x${i.quantity} = ₱${i.total}`
+      `${i.productName} x${i.quantity} = ₱${i.total}`
     )).join('\n');
 
     const summary = `New Order Received:\n\nName: ${session.name}\nMobile: ${session.number}\nAddress: ${session.address}\nDelivery: ${session.delivery}\n\nItems:\n${orderDetails}\n\nTotal: ₱${orderTotal}`;
 
-    // Send to Admin
-    bot.sendMessage(adminId, 'Bot started and ready!').catch(console.error);
+    // Notify Admin (you) about the new order for manual QR processing
+    bot.sendMessage(adminId, summary);
 
-    // Show Payment Link to User
-    const payLink = `https://api.netbank.com/qrph/generate?amount=${orderTotal}&ref=${chatId}-${Date.now()}`;
-    bot.sendMessage(chatId, `Thank you! To complete your order, please pay via QRPH:\n\nTotal: ₱${orderTotal}\n\n[Click to Pay](${payLink})`, {
-      parse_mode: 'Markdown',
-      reply_markup: { remove_keyboard: true }
-    });
+    // Notify Customer order is received and that QR will be sent after manual processing
+    bot.sendMessage(chatId, `Thank you for your order! Your total is ₱${orderTotal}.\n\nYou will receive a payment QR code soon once we process your order.`);
 
-    bot.sendMessage(chatId, 'You will receive a confirmation message after payment is verified.');
+    // Clear cart to reset session or you can keep it to allow adding more orders after payment
+    session.cart = [];
   }
 });
 
-// LISTEN
+// START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Bot server running on port ${PORT}`);
