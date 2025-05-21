@@ -114,7 +114,6 @@ bot.on('message', (msg) => {
     });
     return;
   }
-
   if (selected) {
     session.selectedProduct = selected;
     if (selected.variants) {
