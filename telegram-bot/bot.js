@@ -42,7 +42,7 @@ const products = {
 };
 
 const PICKUP_LOCATION = "Evangelista St. Pavia";
-const ADMIN_CHAT_ID = YOUR_TELEGRAM_ID_HERE; // replace with your Telegram user ID
+const ADMIN_CHAT_ID = 7699555744; // replace with your Telegram user ID
 
 // Helper: send categories keyboard
 function sendCategories(chatId) {
