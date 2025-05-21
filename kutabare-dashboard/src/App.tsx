@@ -13,7 +13,7 @@ type Order = {
 
 const STATUS_OPTIONS = ['Pending', 'Order Received', 'Being Prepared', 'En Route', 'Completed'];
 
-const BASE_URL = 'https://kutabare-bot.onrender.com/api/orders';
+const BASE_URL = 'https://kutabare-backend.onrender.com/api/orders';
 
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
