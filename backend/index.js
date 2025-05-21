@@ -14,6 +14,11 @@ mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTop
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
+// Add this route
+app.get('/', (req, res) => {
+  res.send('Server is live!');
+});
+
 app.use('/api/orders', orderRoutes);
 
 const PORT = process.env.PORT || 3000;
