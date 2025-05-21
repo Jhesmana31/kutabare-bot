@@ -3,23 +3,22 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const axios = require('axios');
-const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Initialize Telegram bot with webhook
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
-bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Telegram webhook route — to receive updates from Telegram
+// Telegram bot webhook
+const TelegramBot = require('node-telegram-bot-api');
+const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
+
+// Webhook route
 app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
@@ -32,7 +31,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.error('Mongo error:', err));
 
-// Multer file upload setup
+// File upload setup
 const storage = multer.diskStorage({
   destination: './uploads/',
   filename: (req, file, cb) => {
@@ -41,10 +40,10 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Import your Order model
+// Order model
 const Order = require('./models/Order');
 
-// Orders API
+// Routes
 app.post('/api/orders', async (req, res) => {
   try {
     const { telegramId, items, deliveryOption, contact, total } = req.body;
@@ -68,7 +67,6 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Upload QR and send to Telegram user
 app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId);
@@ -77,6 +75,8 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
     order.qrFile = req.file.filename;
     await order.save();
 
+    // Send QR to customer via Telegram
+    const axios = require('axios');
     const botUrl = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`;
     await axios.post(botUrl, {
       chat_id: order.telegramId,
@@ -91,7 +91,6 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
-// Root route
 app.get('/', (req, res) => res.send('Kutabare backend live!'));
 
 // Start server
