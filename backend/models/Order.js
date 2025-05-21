@@ -1,13 +1,17 @@
 const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
-  telegramId: String,
-  items: [String],
+  items: Array,
   deliveryOption: String,
-  contactInfo: String,
-  status: { type: String, default: 'Pending' },
+  contact: String,
+  status: {
+    type: String,
+    default: 'Pending',
+  },
   qrUrl: String,
-  createdAt: { type: Date, default: Date.now }
-});
+  telegramId: String,
+}, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
+
+
