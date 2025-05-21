@@ -1,177 +1,263 @@
-require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
-const bodyParser = require('body-parser');
-const axios = require('axios');
-const products = require('./products');
 
-const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token);
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Replace with your bot token
+const token = 'YOUR_TELEGRAM_BOT_TOKEN';
+const bot = new TelegramBot(token, { polling: true });
 
-// Middleware
-app.use(bodyParser.json());
-
-// Set webhook
-bot.setWebHook(`${process.env.BACKEND_URL}/bot${token}`);
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// Order flow state
-const userState = {};
-
-// Start
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  userState[chatId] = {};
-  bot.sendMessage(chatId, 'Hi! I’m Kutabare Bot! Ready to take your spicy order.', {
-    reply_markup: {
-      inline_keyboard: Object.keys(products).map((cat) => [
-        { text: cat, callback_data: `cat:${cat}` },
-      ]),
+// Product data with variants and prices
+const products = {
+  "Cock Rings & Toys": [
+    { name: "Cock Ring - Pack of 3", price: 80 },
+    { name: "Cock Ring Vibrator", price: 60 },
+    { name: "Spikey Jelly (Red)", price: 160 },
+    { name: "Spikey Jelly (Black)", price: 160 },
+    { name: `"Th Bolitas" Jelly`, price: 160 },
+    { name: "Portable Wired Vibrator Egg", price: 130 },
+    { name: "Delay Collar", price: 200 },
+    { name: "Delay Ejaculation Buttplug", price: 200 },
+    { name: "8 Inches African Version Dildo", variants: [
+        { name: "Black", price: 370 },
+        { name: "Clear", price: 370 },
+        { name: "Pink", price: 370 },
+      ]
     },
+  ],
+  "Lubricants": [
+    { name: "Monogatari Lube Tube", price: 120 },
+    { name: "Monogatari Lube Pinhole", price: 120 },
+    { name: "Monogatari Flavored Lube", variants: [
+        { name: "Peach", price: 200 },
+        { name: "Strawberry", price: 200 },
+        { name: "Cherry", price: 200 },
+      ]
+    },
+  ],
+  "Performance Enhancers": [
+    { name: "Maxman per Tab", price: 40 },
+    { name: "Maxman per Pad", price: 400, discount: 50 },
+  ],
+  "Condoms": [
+    { name: "Ultra thin 001 for men natural latex condom", variants: [
+        { name: "Black", price: 90 },
+        { name: "Long Battle", price: 90 },
+        { name: "Blue", price: 90 },
+        { name: "Naked Pleasure", price: 90 },
+        { name: "Granule Passion", price: 90 },
+      ]
+    },
+  ],
+  "Menthol & Fresheners": [
+    { name: "Eucalyptus Menthol Food Grade", variants: [
+        { name: "15-20", price: 1000 },
+        { name: "25-30", price: 1500 },
+        { name: "35-40", price: 2000 },
+      ]
+    },
+    { name: "Mouth Fresheners", variants: [
+        { name: "Peach", price: 90 },
+        { name: "Mint", price: 90 },
+      ]
+    },
+  ],
+  "Accessories": [
+    { name: "Masturbator Cup", variants: [
+        { name: "Yellow (Mouth)", price: 120 },
+        { name: "Gray (Arse)", price: 120 },
+        { name: "Black (Vagina)", price: 120 },
+      ]
+    },
+    { name: "Insulin Syringe", price: 20 },
+    { name: "Sterile Water for Injection", price: 15 },
+  ],
+};
+
+// In-memory carts: chatId => [ {category, product, variant, price, quantity} ]
+const carts = {};
+
+// --- Helper to send categories ---
+function sendCategories(chatId) {
+  const categoryButtons = Object.keys(products).map(cat => ([{
+    text: cat,
+    callback_data: `category|${cat}`
+  }]));
+  bot.sendMessage(chatId, "Please choose a product category:", {
+    reply_markup: { inline_keyboard: categoryButtons }
   });
-});
+}
 
-// Handle button actions
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
+// --- Helper to send products in category ---
+function sendProducts(chatId, category) {
+  const prods = products[category];
+  if (!prods) return bot.sendMessage(chatId, "Category not found.");
 
-  if (data.startsWith('cat:')) {
-    const category = data.split(':')[1];
-    userState[chatId].category = category;
+  const productButtons = prods.map(p => ([{
+    text: p.name,
+    callback_data: `product|${category}|${p.name}`
+  }]));
 
-    const items = products[category];
-    const buttons = items.map((item, i) => [
-      { text: item.name, callback_data: `prod:${i}` },
-    ]);
+  // Back button
+  productButtons.push([{ text: "⬅️ Back to Categories", callback_data: 'backToCategories' }]);
 
-    bot.editMessageText(`Select a product from *${category}*`, {
-      chat_id: chatId,
-      message_id: query.message.message_id,
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: buttons },
+  bot.sendMessage(chatId, `Products in *${category}*:`, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: productButtons }
+  });
+}
+
+// --- Helper to send variants if any ---
+function sendVariants(chatId, category, productName) {
+  const prods = products[category];
+  if (!prods) return bot.sendMessage(chatId, "Category not found.");
+
+  const product = prods.find(p => p.name === productName);
+  if (!product) return bot.sendMessage(chatId, "Product not found.");
+
+  if (!product.variants) {
+    // No variants - add directly to cart
+    addToCart(chatId, category, product.name, null, product.price);
+    return;
+  }
+
+  const variantButtons = product.variants.map(variant => ([{
+    text: `${variant.name} - ₱${variant.price}`,
+    callback_data: `variant|${category}|${productName}|${variant.name}|${variant.price}`
+  }]));
+
+  // Back to products button
+  variantButtons.push([{ text: "⬅️ Back to Products", callback_data: `back|${category}` }]);
+
+  bot.sendMessage(chatId, `Choose a variant for *${productName}*:`, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: variantButtons }
+  });
+}
+
+// --- Add product to cart ---
+function addToCart(chatId, category, productName, variantName, price) {
+  if (!carts[chatId]) carts[chatId] = [];
+
+  // Check if already in cart, increase qty
+  let found = false;
+  for (const item of carts[chatId]) {
+    if (
+      item.product === productName &&
+      item.variant === variantName
+    ) {
+      item.quantity++;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    carts[chatId].push({
+      category,
+      product: productName,
+      variant: variantName,
+      price: Number(price),
+      quantity: 1
     });
   }
+  bot.sendMessage(chatId, `Added *${productName}${variantName ? ' ('+variantName+')' : ''}* - ₱${price} to your cart.`, { parse_mode: 'Markdown' });
 
-  else if (data.startsWith('prod:')) {
-    const index = parseInt(data.split(':')[1]);
-    const category = userState[chatId].category;
-    const item = products[category][index];
-    userState[chatId].product = item;
-
-    if (item.variants) {
-      const buttons = item.variants.map((v) => [
-        { text: v, callback_data: `var:${v}` },
-      ]);
-      bot.sendMessage(chatId, `Choose variant for *${item.name}*`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: buttons },
-      });
-    } else {
-      userState[chatId].variant = null;
-      askQuantity(chatId);
-    }
-  }
-
-  else if (data.startsWith('var:')) {
-    userState[chatId].variant = data.split(':')[1];
-    askQuantity(chatId);
-  }
-
-  else if (data.startsWith('qty:')) {
-    userState[chatId].quantity = parseInt(data.split(':')[1]);
-    askDelivery(chatId);
-  }
-
-  else if (data.startsWith('delivery:')) {
-    userState[chatId].deliveryOption = data.split(':')[1];
-    if (userState[chatId].deliveryOption === 'delivery') {
-      bot.sendMessage(chatId, 'Drop your address please:');
-      userState[chatId].expecting = 'address';
-    } else {
-      userState[chatId].address = 'Pick up';
-      askContact(chatId);
-    }
-  }
-});
-
-// Collect address/contact
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  const state = userState[chatId];
-  if (!state) return;
-
-  if (state.expecting === 'address') {
-    state.address = msg.text;
-    state.expecting = null;
-    askContact(chatId);
-  } else if (state.expecting === 'contact') {
-    state.contact = msg.text;
-    state.expecting = null;
-    finalizeOrder(chatId);
-  }
-});
-
-// Helpers
-function askQuantity(chatId) {
-  const buttons = [1, 2, 3, 4, 5].map((n) => [
-    { text: `${n}`, callback_data: `qty:${n}` },
-  ]);
-  bot.sendMessage(chatId, 'How many would you like?', {
-    reply_markup: { inline_keyboard: buttons },
-  });
+  // Show next options
+  showPostAddOptions(chatId);
 }
 
-function askDelivery(chatId) {
-  const buttons = [
-    [{ text: 'Pick up', callback_data: 'delivery:pickup' }],
-    [{ text: 'Delivery', callback_data: 'delivery:delivery' }],
+// --- Show options after adding product ---
+function showPostAddOptions(chatId) {
+  const options = [
+    [{ text: 'Add more products', callback_data: 'backToCategories' }],
+    [{ text: 'View Cart / Checkout', callback_data: 'checkout' }]
   ];
-  bot.sendMessage(chatId, 'Delivery option?', {
-    reply_markup: { inline_keyboard: buttons },
+  bot.sendMessage(chatId, "What would you like to do next?", {
+    reply_markup: { inline_keyboard: options }
   });
 }
 
-function askContact(chatId) {
-  bot.sendMessage(chatId, 'Please enter your contact number:');
-  userState[chatId].expecting = 'contact';
-}
-
-async function finalizeOrder(chatId) {
-  const state = userState[chatId];
-  const productName = state.product.name + (state.variant ? ` - ${state.variant}` : '');
-  const total = state.product.price * state.quantity;
-
-  const order = {
-    telegramId: chatId,
-    name: productName,
-    contact: state.contact,
-    deliveryOption: state.deliveryOption,
-    address: state.address,
-    products: [{
-      name: productName,
-      price: state.product.price,
-      quantity: state.quantity,
-    }],
-    totalAmount: total,
-  };
-
-  try {
-    await axios.post(`${process.env.BACKEND_URL}/api/orders`, order);
-    bot.sendMessage(chatId, `Order placed! Total: ₱${total}\nWe’ll contact you soon.`);
-    delete userState[chatId];
-  } catch (err) {
-    console.error("Order error:", err.message);
-    bot.sendMessage(chatId, "Oops! Something went wrong while placing your order.");
+// --- Show cart and total ---
+function showCart(chatId) {
+  const cart = carts[chatId] || [];
+  if (cart.length === 0) {
+    return bot.sendMessage(chatId, "Your cart is empty.");
   }
+
+  let message = "*Your Cart:*\n\n";
+  let total = 0;
+  for (const item of cart) {
+    let price = item.price;
+    // Apply discount for Maxman per Pad
+    if (item.product === "Maxman per Pad") {
+      price = price - 50;
+    }
+    const subtotal = price * item.quantity;
+    message += `- ${item.product}${item.variant ? ' (' + item.variant + ')' : ''} x${item.quantity}: ₱${subtotal}\n`;
+    total += subtotal;
+  }
+  message += `\n*Total: ₱${total}*`;
+
+  const buttons = [
+    [{ text: "⬅️ Add more products", callback_data: 'backToCategories' }],
+    [{ text: "Confirm Order", callback_data: 'confirmOrder' }],
+    [{ text: "Clear Cart", callback_data: 'clearCart' }]
+  ];
+
+  bot.sendMessage(chatId, message, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons }
+  });
 }
 
-// Express startup
-app.listen(PORT, () => {
-  console.log(`Bot server running on port ${PORT}`);
+// --- Clear cart ---
+function clearCart(chatId) {
+  carts[chatId] = [];
+  bot.sendMessage(chatId, "Your cart has been cleared.");
+  sendCategories(chatId);
+}
+
+// --- Start command ---
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "Welcome to Kutabare Online Shop! Ready to shop?");
+  sendCategories(chatId);
+});
+
+// --- Handle callback queries ---
+bot.on('callback_query', (callbackQuery) => {
+  const data = callbackQuery.data;
+  const chatId = callbackQuery.message.chat.id;
+
+  if (data === 'backToCategories') {
+    sendCategories(chatId);
+  } else if (data === 'checkout') {
+    showCart(chatId);
+  } else if (data === 'clearCart') {
+    clearCart(chatId);
+  } else if (data === 'confirmOrder') {
+    bot.sendMessage(chatId, "Thank you for your order! We'll contact you soon to confirm payment and delivery details.");
+    // Here you would save order to DB and trigger payment flow
+  } else if (data.startsWith('category|')) {
+    const category = data.split('|')[1];
+    sendProducts(chatId, category);
+
+  } else if (data.startsWith('product|')) {
+    const parts = data.split('|');
+    const category = parts[1];
+    const productName = parts[2];
+    sendVariants(chatId, category, productName);
+
+  } else if (data.startsWith('variant|')) {
+    const parts = data.split('|');
+    const category = parts[1];
+    const productName = parts[2];
+    const variantName = parts[3];
+    const price = parts[4];
+    addToCart(chatId, category, productName, variantName, price);
+
+  } else if (data.startsWith('back|')) {
+    const category = data.split('|')[1];
+    sendProducts(chatId, category);
+  }
+
+  // Acknowledge callback query to remove loading state
+  bot.answerCallbackQuery(callbackQuery.id);
 });
