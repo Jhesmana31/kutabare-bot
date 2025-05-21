@@ -4,9 +4,17 @@ const Order = require('../models/Order');
 const { sendTelegramMessage } = require('../telegram');
 
 router.post('/', async (req, res) => {
-  const newOrder = new Order(req.body);
-  const saved = await newOrder.save();
-  res.json(saved);
+  try {
+    const { telegramId } = req.body;
+    if (!telegramId) return res.status(400).json({ error: 'Missing telegramId' });
+
+    const newOrder = new Order(req.body);
+    const saved = await newOrder.save();
+    res.json(saved);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.get('/', async (req, res) => {
