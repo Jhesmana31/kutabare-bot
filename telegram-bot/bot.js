@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const TOKEN = '7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw';
 const app = express();
 const url = 'https://kutabare-bot.onrender.com'; // Your live Render domain
-const adminId = '7699555744';
+const adminId = 7699555744;
 
 // Initialize bot for webhook
 const bot = new TelegramBot(TOKEN, { webHook: true });
