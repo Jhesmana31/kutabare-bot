@@ -1,36 +1,33 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
+const { sendTelegramMessage } = require('../telegram');
 
-// Create new order
 router.post('/', async (req, res) => {
-  try {
-    const newOrder = new Order(req.body);
-    await newOrder.save();
-    res.status(201).json({ message: 'Order saved successfully' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to save order' });
-  }
+  const newOrder = new Order(req.body);
+  const saved = await newOrder.save();
+  res.json(saved);
 });
 
-// Get all orders
 router.get('/', async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
-  }
+  const orders = await Order.find().sort({ createdAt: -1 });
+  res.json(orders);
 });
 
-// Update order status
-router.put('/:id', async (req, res) => {
-  try {
-    const updated = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to update order status' });
-  }
+router.patch('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status, qrUrl } = req.body;
+  const order = await Order.findByIdAndUpdate(id, { status, qrUrl }, { new: true });
+
+  let msg = '';
+  if (status === 'Order Received') msg = `Yay! Natanggap na namin ang order mo. Chill ka lang ha? Soon e-enjoy mo na 'yan!`;
+  else if (status === 'Being Prepared') msg = `Umuusok na sa kusina—prepping na ang order mo! Konti na lang!`;
+  else if (status === 'En Route') msg = `Ayan na siya, bes! Papunta na ang spicy delivery mo. Stay naughty!`;
+
+  if (msg) sendTelegramMessage(order.telegramId, msg);
+  if (qrUrl) sendTelegramMessage(order.telegramId, `Here's your QR code for payment:\n${qrUrl}`);
+
+  res.json(order);
 });
 
 module.exports = router;
