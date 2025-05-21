@@ -1,8 +1,12 @@
 const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
-  chatId: { type: String, required: true },
-  message: { type: String, required: true },
+  telegramId: String,
+  items: [String],
+  deliveryOption: String,
+  contactInfo: String,
+  status: { type: String, default: 'Pending' },
+  qrUrl: String,
   createdAt: { type: Date, default: Date.now }
 });
 
