@@ -1,16 +1,18 @@
-const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express'); // you forgot this!
 const bodyParser = require('body-parser');
 
 // CONFIG
 const TOKEN = '7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw';
-const bot = new TelegramBot(TOKEN, { webHook: { port: 3000 } });
 const app = express();
-const url = 'https://kutabarebot.onrender.com'; // Render domain
+const url = 'https://kutabarebot.onrender.com'; // Your live Render domain
 const adminId = '7699555744';
 
+// Initialize bot for webhook
+const bot = new TelegramBot(TOKEN, { webHook: true });
 bot.setWebHook(`${url}/bot${TOKEN}`);
 
+// MIDDLEWARE
 app.use(bodyParser.json());
 app.post(`/bot${TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
