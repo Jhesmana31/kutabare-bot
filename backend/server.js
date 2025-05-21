@@ -151,13 +151,3 @@ app.listen(PORT, async () => {
   res.send({ success: true });
 });
 
-app.listen(PORT, async () => {
-  try {
-    await axios.post(`${TELEGRAM_API}/setWebhook`, {
-      url: `${WEBHOOK_URL}/bot${BOT_TOKEN}`,
-    });
-    console.log('Webhook set and server running on port', PORT);
-  } catch (err) {
-    console.error('Error setting webhook:', err.message);
-  }
-});
