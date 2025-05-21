@@ -1,153 +1,88 @@
-require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-mongoose.connect(process.env.MONGODB_URI, {
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => {
-  console.log('Connected to MongoDB');
-}).catch((err) => {
-  console.error('MongoDB connection error:', err);
-});
+  useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('Mongo error:', err));
 
-const orderSchema = new mongoose.Schema({
-  telegramId: String,
-  name: String,
-  phone: String,
-  address: String,
-  items: Array,
-  total: Number,
-  status: { type: String, default: 'pending' },
-  qrFile: String,
-});
-
-const Order = mongoose.model('Order', orderSchema);
-
+// File upload setup
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  destination: './uploads/',
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  }
 });
 const upload = multer({ storage });
 
-app.use(bodyParser.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Order model
+const Order = require('./models/Order');
 
-// Telegram webhook handler
-app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
-  const message = req.body.message;
-  if (!message) return res.sendStatus(200);
-
-  const chatId = message.chat.id;
-
-  if (message.text === '/start') {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: 'Welcome! Send your order as JSON like this:\n{"name":"John Doe","phone":"09123456789","address":"Some St","items":[{"name":"Cock Ring","qty":2}],"total":300}',
-    });
-    return res.sendStatus(200);
-  }
-
-  let orderData;
+// Routes
+app.post('/api/orders', async (req, res) => {
   try {
-    orderData = JSON.parse(message.text);
-  } catch {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: 'Sorry, I could not understand your order. Please send your order as JSON like this:\n{"name":"John Doe","phone":"09123456789","address":"Some St","items":[{"name":"Cock Ring","qty":2}],"total":300}',
-    });
-    return res.sendStatus(200);
-  }
+    const { telegramId, items, deliveryOption, contact, total } = req.body;
+    if (!telegramId || !items || !contact || !total) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
 
-  if (!orderData.name || !orderData.phone || !orderData.items || !orderData.total) {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: 'Missing fields in your order. Please include name, phone, items, and total.',
-    });
-    return res.sendStatus(200);
-  }
-
-  try {
     const newOrder = new Order({
-      telegramId: chatId,
-      name: orderData.name,
-      phone: orderData.phone,
-      address: orderData.address || '',
-      items: orderData.items,
-      total: orderData.total,
+      telegramId,
+      phone: contact,
+      items,
+      total,
+      deliveryOption: deliveryOption || 'Pickup',
     });
+
     await newOrder.save();
-
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: `Thanks ${orderData.name}! Your order was received.\nTotal: ₱${orderData.total}\nWe will send you the payment QR code soon.`,
-    });
+    res.status(201).json({ message: 'Order saved', orderId: newOrder._id });
   } catch (err) {
-    console.error('Error saving order:', err);
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: 'There was an error processing your order. Please try again later.',
-    });
-  }
-
-  res.sendStatus(200);
-});
-
-// Get all orders (for dashboard)
-app.get('/orders', async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ _id: -1 });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    console.error('Order creation error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Upload QR code and notify user
-app.post('/upload-qr/:id', upload.single('qr'), async (req, res) => {
+app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).send('Order not found');
+    const order = await Order.findById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
 
     order.qrFile = req.file.filename;
     await order.save();
 
-    await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+    // Send QR to customer via Telegram
+    const axios = require('axios');
+    const botUrl = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`;
+    await axios.post(botUrl, {
       chat_id: order.telegramId,
-      photo: `${WEBHOOK_URL}/uploads/${order.qrFile}`,
-      caption: `Here's your QR for payment. Total: ₱${order.total}`,
+      photo: `${process.env.BACKEND_URL}/uploads/${order.qrFile}`,
+      caption: 'Scan this QR to pay for your order. Let me know once paid, ha!'
     });
 
-    res.json({ success: true });
+    res.status(200).json({ message: 'QR uploaded and sent!' });
   } catch (err) {
-    console.error('Upload QR error:', err);
-    res.status(500).json({ error: 'Failed to upload QR code' });
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Failed to upload/send QR' });
   }
 });
 
-app.listen(PORT, async () => {
-  try {
-    // Use axios.post for setWebhook with form params or axios.get with params
-    const response = await axios.post(`${TELEGRAM_API}/setWebhook`, null, {
-      params: { url: `${WEBHOOK_URL}/bot${BOT_TOKEN}` },
-    });
-    if (response.data.ok) {
-      console.log('Webhook set successfully');
-    } else {
-      console.error('Webhook set failed:', response.data);
-    }
-    console.log(`Server running on port ${PORT}`);
-  } catch (err) {
-    console.error('Error setting webhook:', err.message);
-  }
+app.get('/', (req, res) => res.send('Kutabare backend live!'));
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
