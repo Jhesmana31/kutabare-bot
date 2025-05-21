@@ -2,8 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 require('dotenv').config();
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-const sessions = {};
+const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
