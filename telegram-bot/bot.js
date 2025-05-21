@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 // CONFIG
 const TOKEN = '7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw';
 const app = express();
-const url = 'https://kutabarebot.onrender.com'; // Your live Render domain
+const url = 'https://kutabare-bot.onrender.com'; // Your live Render domain
 const adminId = '7699555744';
 
 // Initialize bot for webhook
