@@ -3,6 +3,7 @@ const axios = require('axios');
 
 const TELEGRAM_BOT_TOKEN = '7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const ADMIN_CHAT_ID = 'YOUR_ADMIN_TELEGRAM_ID'; // replace with your Telegram user ID (number as string)
 
 async function notifyCustomer(chatId, message) {
   try {
@@ -16,6 +17,18 @@ async function notifyCustomer(chatId, message) {
   }
 }
 
+async function notifyAdmin(message) {
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: ADMIN_CHAT_ID,
+      text: message,
+      parse_mode: 'Markdown',
+    });
+  } catch (err) {
+    console.error('Telegram admin notification failed:', err.message);
+  }
+}
+
 // Create new order
 exports.createOrder = async (req, res) => {
   try {
@@ -23,7 +36,10 @@ exports.createOrder = async (req, res) => {
     const saved = await order.save();
     res.status(201).json(saved);
 
-    // Optional: notify admin or customer here
+    // Notify admin about new order
+    const adminMsg = `New order received!\nOrder ID: *#${saved._id}*\nCustomer: ${saved.customerName || 'Unknown'}\nTotal: ₱${saved.total || 'N/A'}`;
+    await notifyAdmin(adminMsg);
+
   } catch (err) {
     res.status(500).json({ error: 'Failed to create order' });
   }
@@ -50,7 +66,7 @@ exports.getOrderById = async (req, res) => {
   }
 };
 
-// Update order and notify customer on status/payment changes
+// Update order and notify customer and admin on status/payment changes
 exports.updateOrder = async (req, res) => {
   try {
     const updated = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -62,12 +78,15 @@ exports.updateOrder = async (req, res) => {
       notifyMsg = `Hello! Your order *#${updated._id}* has been marked as *${req.body.paymentStatus}*. Thank you for your payment!`;
     }
 
-    if (req.body.status) {
-      notifyMsg = `Update for order *#${updated._id}*: Status changed to *${req.body.status}*.`;
+    if (req.body.orderStatus) {
+      notifyMsg = `Update for order *#${updated._id}*: Status changed to *${req.body.orderStatus}*.`;
     }
 
     if (notifyMsg) {
       await notifyCustomer(updated.telegramId, notifyMsg);
+      // Notify admin about update too
+      const adminUpdateMsg = `Order *#${updated._id}* updated.\nPayment Status: ${updated.paymentStatus || '-'}\nOrder Status: ${updated.orderStatus || '-'}`;
+      await notifyAdmin(adminUpdateMsg);
     }
 
     res.json(updated);
