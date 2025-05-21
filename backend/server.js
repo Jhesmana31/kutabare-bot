@@ -97,3 +97,5 @@ app.get('/', (req, res) => res.send('Kutabare backend live!'));
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+require('./telegram')(bot);
