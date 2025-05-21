@@ -51,12 +51,52 @@ app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
   if (message.text === '/start') {
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
-      text: 'Welcome! Type anything to order.',
+      text: 'Welcome! Send your order as JSON like this:\n{"name":"John Doe","phone":"09123456789","address":"Some St","items":[{"name":"Cock Ring","qty":2}],"total":300}',
     });
+    return res.send();
   }
 
-  // Here you would add your order receiving and processing logic
-  // Save orders to MongoDB and notify admin React dashboard as needed
+  // Try to parse order JSON from user message
+  let orderData;
+  try {
+    orderData = JSON.parse(message.text);
+  } catch (err) {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: 'Sorry, I could not understand your order. Please send your order as JSON like this:\n{"name":"John Doe","phone":"09123456789","address":"Some St","items":[{"name":"Cock Ring","qty":2}],"total":300}',
+    });
+    return res.send();
+  }
+
+  // Validate minimum required fields
+  if (!orderData.name || !orderData.phone || !orderData.items || !orderData.total) {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: 'Missing fields in your order. Please include name, phone, items, and total.',
+    });
+    return res.send();
+  }
+
+  // Save order to MongoDB
+  const newOrder = new Order({
+    telegramId: chatId,
+    name: orderData.name,
+    phone: orderData.phone,
+    address: orderData.address || '',
+    items: orderData.items,
+    total: orderData.total,
+    status: 'pending',
+  });
+
+  await newOrder.save();
+
+  // Confirm order to user
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: chatId,
+    text: `Thanks ${orderData.name}! Your order was received.\nTotal: ₱${orderData.total}\nWe will send you the payment QR code soon.`,
+  });
+
+  // Optionally notify admin dashboard here by some webhook or websocket (React can poll /orders)
 
   res.send();
 });
@@ -69,6 +109,31 @@ app.get('/orders', async (req, res) => {
 
 // Upload QR code image for order and notify customer
 app.post('/upload-qr/:id', upload.single('qr'), async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).send('Order not found');
+
+  order.qrFile = req.file.filename;
+  await order.save();
+
+  await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+    chat_id: order.telegramId,
+    photo: `${WEBHOOK_URL}/uploads/${order.qrFile}`,
+    caption: `Here's your QR for payment. Total: ₱${order.total}`,
+  });
+
+  res.send({ success: true });
+});
+
+app.listen(PORT, async () => {
+  try {
+    await axios.post(`${TELEGRAM_API}/setWebhook`, {
+      url: `${WEBHOOK_URL}/bot${BOT_TOKEN}`,
+    });
+    console.log('Webhook set and server running on port', PORT);
+  } catch (err) {
+    console.error('Error setting webhook:', err.message);
+  }
+});
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).send('Order not found');
 
