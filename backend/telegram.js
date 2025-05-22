@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { getProductList, getCategories } = require('./data/products'); // Adjust based on how your data is structured
+const { getCategories, getProductList } = require('./data/products'); // Adjust based on how your data is structured
 
 // Initialize the bot
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
