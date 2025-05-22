@@ -1,101 +1,37 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const multer = require('multer');
-const path = require('path');
-require('dotenv').config();
+module.exports = (bot) => {
+  // Start command
+  bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 
+      `Welcome to Kutabare Online Shop! Ready to order?`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Place Order', callback_data: 'start_order' }]
+          ]
+        }
+    });
+  });
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+  // Handle button presses
+  bot.on('callback_query', (callbackQuery) => {
+    const msg = callbackQuery.message;
+    const data = callbackQuery.data;
+    const chatId = msg.chat.id;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Telegram bot webhook
-const TelegramBot = require('node-telegram-bot-api');
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
-bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
-
-// Webhook route
-app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('Mongo error:', err));
-
-// File upload setup
-const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
-});
-const upload = multer({ storage });
-
-// Order model
-const Order = require('./models/Order');
-
-// Routes
-app.post('/api/orders', async (req, res) => {
-  try {
-    const { telegramId, items, deliveryOption, contact, total } = req.body;
-    if (!telegramId || !items || !contact || !total) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (data === 'start_order') {
+      bot.sendMessage(chatId, 'Great! Please tell me what you want to buy. (For now, just type your order)');
     }
 
-    const newOrder = new Order({
-      telegramId,
-      phone: contact,
-      items,
-      total,
-      deliveryOption: deliveryOption || 'Pickup',
-    });
+    bot.answerCallbackQuery(callbackQuery.id);
+  });
 
-    await newOrder.save();
-    res.status(201).json({ message: 'Order saved', orderId: newOrder._id });
-  } catch (err) {
-    console.error('Order creation error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  // Handle normal messages
+  bot.on('message', (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (text.startsWith('/')) return;
 
-    order.qrFile = req.file.filename;
-    await order.save();
-
-    // Send QR to customer via Telegram
-    const axios = require('axios');
-    const botUrl = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`;
-    await axios.post(botUrl, {
-      chat_id: order.telegramId,
-      photo: `${process.env.BACKEND_URL}/uploads/${order.qrFile}`,
-      caption: 'Scan this QR to pay for your order. Let me know once paid, ha!'
-    });
-
-    res.status(200).json({ message: 'QR uploaded and sent!' });
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Failed to upload/send QR' });
-  }
-});
-
-app.get('/', (req, res) => res.send('Kutabare backend live!'));
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-require('./telegram')(bot);
+    bot.sendMessage(chatId, `You said: ${text}\n(Next: implement order logic here)`);
+  });
+};
