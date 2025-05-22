@@ -6,6 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const Order = require('./models/Order');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -104,6 +105,15 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
+app.get('/api/orders', async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    res.status(200).json(orders);
+  } catch (err) {
+    console.error('Failed to fetch orders:', err);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
 // Simple root route
 app.get('/', (req, res) => res.send('Kutabare backend live!'));
 
