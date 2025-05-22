@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const Order = require('./models/Order');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
