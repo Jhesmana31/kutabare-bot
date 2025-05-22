@@ -4,10 +4,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
-
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -16,16 +12,6 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Telegram bot setup
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
-bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
-
-// Webhook route for Telegram updates
-app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
@@ -33,7 +19,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-// File upload setup (for QR code images)
+// File upload config
 const storage = multer.diskStorage({
   destination: './uploads/',
   filename: (req, file, cb) => {
@@ -42,13 +28,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Order model (adjust path if your model is in a different file)
+// Models
 const Order = require('./models/Order');
 
-// Your Telegram user ID to receive order notifications
-const ADMIN_CHAT_ID = 7721709933; // e.g. 123456789
+// Telegram bot
+const bot = require('./telegram'); // telegram.js exports the bot
+const ADMIN_CHAT_ID = 7721709933;
 
-// POST route to save orders
+// Telegram webhook route
+app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Save new order
 app.post('/api/orders', async (req, res) => {
   try {
     const { telegramId, items, deliveryOption, contact, total } = req.body;
@@ -66,8 +59,7 @@ app.post('/api/orders', async (req, res) => {
 
     await newOrder.save();
 
-    // Notify you on Telegram about new order
-    await bot.sendMessage(ADMIN_CHAT_ID, 
+    await bot.sendMessage(ADMIN_CHAT_ID,
       `New order received!\n` +
       `Items: ${JSON.stringify(newOrder.items)}\n` +
       `Contact: ${newOrder.phone}\n` +
@@ -83,7 +75,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// POST route to upload QR code and send it to customer via Telegram
+// Upload QR and send to customer
 app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId);
@@ -105,24 +97,19 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
+// Get orders
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.status(200).json(orders);
   } catch (err) {
-    console.error('Failed to fetch orders:', err);
+    console.error('Fetch orders error:', err);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
-// Simple root route
+
 app.get('/', (req, res) => res.send('Kutabare backend live!'));
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-require('./telegram')(bot)
-
-// Import your telegram bot event handlers if you have separate file (optional)
-// require('./telegram')(bot);
