@@ -1,5 +1,5 @@
 module.exports = (bot) => {
-  // Start command — send welcome and a button to start order
+  // /start command
   bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     bot.sendMessage(chatId,
@@ -13,7 +13,7 @@ module.exports = (bot) => {
       });
   });
 
-  // Handle button presses
+  // Button presses
   bot.on('callback_query', (callbackQuery) => {
     const msg = callbackQuery.message;
     const data = callbackQuery.data;
@@ -26,13 +26,12 @@ module.exports = (bot) => {
     bot.answerCallbackQuery(callbackQuery.id);
   });
 
-  // Handle free text
+  // Message handler
   bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
-    if (text.startsWith('/')) return; // ignore commands
-
+    if (text.startsWith('/')) return;
     bot.sendMessage(chatId, `You said: ${text}\n(Next: implement order logic here)`);
   });
 };
