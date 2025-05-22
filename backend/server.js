@@ -35,11 +35,13 @@ const Order = require('./models/Order');
 const bot = require('./telegram'); // telegram.js exports the bot
 const ADMIN_CHAT_ID = 7721709933;
 
+bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
+
 // Telegram webhook route
 app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
-});
+}); 
 
 // Save new order
 app.post('/api/orders', async (req, res) => {
