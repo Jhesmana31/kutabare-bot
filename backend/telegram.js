@@ -1,113 +1,70 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { getCategories, getProductList } = require('./data/products');
+const { getCategories, getProductList } = require('./products');
 
-// Initialize bot (webhook mode — no polling)
-const bot = new TelegramBot(process.env.BOT_TOKEN);
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const ADMIN_CHAT_ID = '7699555744'; // your Telegram ID
 
-// Load data
-const categories = getCategories();
-const products = getProductList();
-
-// /start command
+// Start command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-
-  bot.sendMessage(chatId, 'Welcome to Kutabare Online Shop! Select an option below:', {
+  bot.sendMessage(chatId, `Yo babe, ready ka na ba? Pili ka muna ng category ng kalandian mo.`, {
     reply_markup: {
-      inline_keyboard: [
-        [{ text: '🛒 View Products', callback_data: 'view_products' }],
-        [{ text: '📦 My Orders', callback_data: 'my_orders' }]
-      ]
+      inline_keyboard: buildCategoryKeyboard()
     }
   });
 });
 
-// Callback query handler
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
+// Handle button callbacks
+bot.on('callback_query', async (callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data;
 
-  if (data === 'view_products') {
-    const categoryButtons = categories.map(category => ({
-      text: category.name,
-      callback_data: `category_${category.id}`
-    }));
+  if (data.startsWith('cat_')) {
+    const categoryId = data.replace('cat_', '');
+    const products = getProductList(categoryId);
 
-    if (categoryButtons.length === 0) {
-      return bot.sendMessage(chatId, 'No categories available right now.');
+    if (products.length === 0) {
+      return bot.sendMessage(chatId, `Wala pa tayong pampagana sa category na 'yan. Iba muna babe.`);
     }
 
-    // Fix: nest each button in an array for Telegram formatting
-    bot.sendMessage(chatId, 'Choose a category:', {
+    const keyboard = products.map(p => [{
+      text: `${p.name} - ₱${p.price}`,
+      callback_data: `prod_${encodeURIComponent(p.name)}`
+    }]);
+
+    // Add back button
+    keyboard.push([{ text: '« Balik sa Categories', callback_data: 'back_categories' }]);
+
+    return bot.sendMessage(chatId, `Ayan na! Pili ka na kung ano gusto mong ipasok sa cart mo.`, {
       reply_markup: {
-        inline_keyboard: categoryButtons.map(button => [button])
+        inline_keyboard: keyboard
       }
     });
+  }
 
-  } else if (data.startsWith('category_')) {
-    const categoryId = data.split('_')[1];
-    const category = categories.find(cat => String(cat.id) === String(categoryId)); // normalize type
-
-    if (!category) {
-      return bot.sendMessage(chatId, 'Category not found.');
-    }
-
-    const productButtons = products
-      .filter(product => String(product.categoryId) === String(categoryId)) // normalize type
-      .map(product => ({
-        text: product.name,
-        callback_data: `product_${product.id}`
-      }));
-
-    if (productButtons.length === 0) {
-      return bot.sendMessage(chatId, `No products in ${category.name}.`);
-    }
-
-    bot.sendMessage(chatId, `Products in ${category.name}:`, {
+  if (data === 'back_categories') {
+    return bot.sendMessage(chatId, `Balik tayo babe. Anong category ang gusto mong landasin?`, {
       reply_markup: {
-        inline_keyboard: productButtons.map(button => [button])
+        inline_keyboard: buildCategoryKeyboard()
       }
     });
+  }
 
-  } else if (data.startsWith('product_')) {
-    const productId = data.split('_')[1];
-    const product = products.find(prod => String(prod.id) === String(productId));
-
-    if (!product) {
-      return bot.sendMessage(chatId, 'Product not found.');
-    }
-
-    bot.sendMessage(chatId,
-      `${product.name}\nPrice: Php ${product.price}\n${product.description || ''}`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🛒 Add to Cart', callback_data: `add_to_cart_${product.id}` }],
-          [{ text: '↩️ Back to Categories', callback_data: 'view_products' }]
-        ]
-      }
+  if (data.startsWith('prod_')) {
+    const productName = decodeURIComponent(data.replace('prod_', ''));
+    return bot.sendMessage(chatId, `Gusto mo ng *${productName}*? Ay grabe ka... mainit-init pa 'yan!\n\nKung ready ka na, i-type mo lang: *"Gora ${productName}"* or sabihin mo lang: *"Sige na!"*`, {
+      parse_mode: 'Markdown'
     });
-
-  } else if (data.startsWith('add_to_cart_')) {
-    const productId = data.split('_')[2];
-    const product = products.find(prod => String(prod.id) === String(productId));
-
-    if (!product) {
-      return bot.sendMessage(chatId, 'Product not found.');
-    }
-
-    bot.sendMessage(chatId, `${product.name} has been added to your cart.`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💳 Proceed to Checkout', callback_data: `checkout_${productId}` }],
-          [{ text: '↩️ Back to Products', callback_data: 'view_products' }]
-        ]
-      }
-    });
-
-  } else if (data.startsWith('checkout_')) {
-    bot.sendMessage(chatId, 'Please provide your contact details for the order.');
-    // Add follow-up logic here
   }
 });
+
+// Build category buttons
+function buildCategoryKeyboard() {
+  const categories = getCategories();
+  return categories.map(c => ([{
+    text: c.name,
+    callback_data: `cat_${c.id}`
+  }]));
+}
 
 module.exports = bot;
