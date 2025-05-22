@@ -1,5 +1,6 @@
 const productsData = require('./data/products');
 const userSessions = {};
+const axios = require('axios'); // Add this to allow POST request to server
 
 module.exports = (bot) => {
   bot.onText(/\/start/, (msg) => {
@@ -124,12 +125,70 @@ Choose a category to get started:`, {
       bot.sendMessage(chatId, msg, {
         parse_mode: 'Markdown',
         reply_markup: {
-           inline_keyboard: [
-    [{ text: 'Proceed to Checkout', callback_data: 'checkout' }],
-    [{ text: 'Back to Categories', callback_data: 'back_to_categories' }]
-  ]
-}
+          inline_keyboard: [
+            [{ text: 'Checkout', callback_data: 'checkout' }],
+            [{ text: 'Back to Categories', callback_data: 'back_to_categories' }]
+          ]
+        }
       });
+    }
+
+    // Checkout process starts
+    else if (data === 'checkout') {
+      bot.sendMessage(chatId, 'Enter your *name*:', { parse_mode: 'Markdown' });
+      userSessions[chatId].step = 'get_name';
+    }
+  });
+
+  bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const session = userSessions[chatId];
+
+    if (!session || !session.step) return;
+
+    if (session.step === 'get_name') {
+      session.contactName = msg.text;
+      session.step = 'get_number';
+      bot.sendMessage(chatId, 'Enter your *contact number*:', { parse_mode: 'Markdown' });
+    } else if (session.step === 'get_number') {
+      session.contactNumber = msg.text;
+      session.step = 'get_delivery';
+      bot.sendMessage(chatId, 'Choose delivery option:', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Pickup', callback_data: 'delivery_Pickup' }],
+            [{ text: 'Same-day Delivery', callback_data: 'delivery_Same-day' }]
+          ]
+        }
+      });
+    }
+  });
+
+  bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+
+    if (data.startsWith('delivery_')) {
+      const deliveryOption = data.split('_')[1];
+      const session = userSessions[chatId];
+      session.deliveryOption = deliveryOption;
+
+      const total = session.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+      // Send order to server
+      await axios.post('https://kutabarebot.onrender.com/api/orders', {
+        items: session.cart,
+        contactName: session.contactName,
+        contactNumber: session.contactNumber,
+        deliveryOption,
+        total
+      }).catch((e) => console.error('Order POST failed:', e));
+
+      bot.sendMessage(chatId, `Thank you *${session.contactName}*! Your order has been placed.\nWe'll contact you soon.`, {
+        parse_mode: 'Markdown'
+      });
+
+      delete userSessions[chatId];
     }
   });
 };
