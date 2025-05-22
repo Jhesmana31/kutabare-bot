@@ -122,5 +122,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+require('./telegram')(bot)
+
 // Import your telegram bot event handlers if you have separate file (optional)
 // require('./telegram')(bot);
