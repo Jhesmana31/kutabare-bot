@@ -1,17 +1,18 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { getCategories, getProductList } = require('./data/products'); // Adjust based on how your data is structured
+const { getCategories, getProductList } = require('./data/products'); // Adjust based on your structure
 
-// Initialize the bot
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+// Initialize the bot WITHOUT polling because you're using webhook
+const bot = new TelegramBot(process.env.BOT_TOKEN);
 
-const categories = getCategories(); // Get categories from your data
-const products = getProductList(); // List all products (or per category)
+// Your webhook URL must be set somewhere else (e.g., in your server config)
+// Example: bot.setWebHook('https://yourdomain.com/bot' + process.env.BOT_TOKEN);
 
-// Handle the `/start` command
+const categories = getCategories();
+const products = getProductList();
+
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
 
-  // Welcome message
   bot.sendMessage(chatId, 'Welcome to Kutabare Online Shop! Select an option below:', {
     reply_markup: {
       inline_keyboard: [
@@ -22,14 +23,12 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// Handle button clicks (callbacks)
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
   if (data === 'view_products') {
-    // Show product categories
-    const categoryButtons = categories.map((category) => ({
+    const categoryButtons = categories.map(category => ({
       text: category.name,
       callback_data: `category_${category.id}`
     }));
@@ -40,13 +39,12 @@ bot.on('callback_query', async (query) => {
       }
     });
   } else if (data.startsWith('category_')) {
-    // Show products in the selected category
     const categoryId = data.split('_')[1];
-    const category = categories.find((cat) => cat.id === categoryId);
+    const category = categories.find(cat => cat.id === categoryId);
 
     const productButtons = products
-      .filter((product) => product.categoryId === categoryId)
-      .map((product) => ({
+      .filter(product => product.categoryId === categoryId)
+      .map(product => ({
         text: product.name,
         callback_data: `product_${product.id}`
       }));
@@ -57,9 +55,8 @@ bot.on('callback_query', async (query) => {
       }
     });
   } else if (data.startsWith('product_')) {
-    // Show product details
     const productId = data.split('_')[1];
-    const product = products.find((prod) => prod.id === productId);
+    const product = products.find(prod => prod.id === productId);
 
     bot.sendMessage(chatId, `${product.name}\nPrice: Php ${product.price}\n${product.description || ''}`, {
       reply_markup: {
@@ -71,7 +68,7 @@ bot.on('callback_query', async (query) => {
     });
   } else if (data.startsWith('add_to_cart_')) {
     const productId = data.split('_')[2];
-    const product = products.find((prod) => prod.id === productId);
+    const product = products.find(prod => prod.id === productId);
 
     bot.sendMessage(chatId, `${product.name} has been added to your cart. You can proceed with your order.`, {
       reply_markup: {
@@ -82,9 +79,8 @@ bot.on('callback_query', async (query) => {
       }
     });
   } else if (data.startsWith('checkout_')) {
-    // Trigger checkout process, ask for details (address, delivery option, etc.)
     bot.sendMessage(chatId, 'Please provide your contact details for the order.');
-    // Further logic for collecting customer details
+    // Continue checkout logic here
   }
 });
 
