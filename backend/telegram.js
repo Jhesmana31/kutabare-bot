@@ -1,7 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const productsData = require('./data/products');
-const { sendOrderToAdmin, saveOrderToDashboard } = require('./utils');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const userSessions = {};
@@ -213,8 +212,7 @@ async function finishOrder(chatId, address) {
     console.error('Error sending order to dashboard:', err.message);
   }
 
-  saveOrderToDashboard({ chatId, cart, total, deliveryMethod: session.deliveryMethod, address });
-
+  console.log('Order saved to dashboard:', { chatId, cart, total, deliveryMethod: session.deliveryMethod, address });
   delete userSessions[chatId];
 }
 
