@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { getCategories, getProductList } = require('./products');
+const { getCategories, getProductList } = require('./data/products');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const ADMIN_CHAT_ID = '7699555744'; // your Telegram ID
