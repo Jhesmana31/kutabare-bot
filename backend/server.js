@@ -3,45 +3,44 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-require('dotenv').config();
+const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
+// Hardcoded values (for testing — switch to env vars later)
+const BOT_TOKEN = '7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw';
+const BACKEND_URL = 'https://kutabare-backend.onrender.com';
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Telegram bot setup
-const TelegramBot = require('node-telegram-bot-api');
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+// Telegram bot webhook setup
+const bot = new TelegramBot(BOT_TOKEN, { webHook: true });
+bot.setWebHook(`${BACKEND_URL}/bot${BOT_TOKEN}`);
 
-// Webhook setup
-const webhookPath = `/bot${process.env.BOT_TOKEN}`;
-const webhookURL = `${process.env.BACKEND_URL}${webhookPath}`;
-bot.setWebHook(webhookURL);
-
-// Webhook route
-app.post(webhookPath, (req, res) => {
-  console.log('Webhook hit!');
+app.post(`/bot${BOT_TOKEN}`, (req, res) => {
+  console.log('Webhook received update:', req.body);
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Optional: Test webhook GET route to confirm Render routing
-app.get(webhookPath, (req, res) => {
+// Optional: check webhook status
+app.get(`/bot${BOT_TOKEN}`, (req, res) => {
   res.send('Bot webhook is alive!');
 });
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.error('Mongo error:', err));
 
-// Multer setup for uploads
+// File upload setup
 const storage = multer.diskStorage({
   destination: './uploads/',
   filename: (req, file, cb) => {
@@ -53,7 +52,7 @@ const upload = multer({ storage });
 // Order model
 const Order = require('./models/Order');
 
-// Order creation endpoint
+// Order creation route
 app.post('/api/orders', async (req, res) => {
   try {
     const { telegramId, items, deliveryOption, contact, total } = req.body;
@@ -77,7 +76,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Upload QR and notify via Telegram
+// Upload QR route
 app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId);
@@ -86,12 +85,11 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
     order.qrFile = req.file.filename;
     await order.save();
 
-    const axios = require('axios');
-    const botUrl = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`;
-    await axios.post(botUrl, {
+    // Send QR to customer via Telegram
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
       chat_id: order.telegramId,
-      photo: `${process.env.BACKEND_URL}/uploads/${order.qrFile}`,
-      caption: 'Scan this QR to pay for your order. Let me know once paid, ha!'
+      photo: `${BACKEND_URL}/uploads/${order.qrFile}`,
+      caption: 'Scan this QR to pay for your order. Let me know once paid, ha!',
     });
 
     res.status(200).json({ message: 'QR uploaded and sent!' });
@@ -101,13 +99,14 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
-// Root
-app.get('/', (req, res) => res.send('Kutabare backend live!'));
+app.get('/', (req, res) => {
+  res.send('Kutabare backend live!');
+});
 
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Load Telegram message handlers
+// Load bot logic
 require('./telegram')(bot);
