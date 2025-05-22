@@ -124,11 +124,11 @@ Choose a category to get started:`, {
       bot.sendMessage(chatId, msg, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [{ text: 'Back to Categories', callback_data: 'back_to_categories' }]
-            // You can add payment/checkout buttons here
-          ]
-        }
+           inline_keyboard: [
+    [{ text: 'Proceed to Checkout', callback_data: 'checkout' }],
+    [{ text: 'Back to Categories', callback_data: 'back_to_categories' }]
+  ]
+}
       });
     }
   });
