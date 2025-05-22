@@ -1,60 +1,90 @@
-// routes/orders.js
 const express = require('express');
-const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 const Order = require('../models/Order');
-const TelegramBot = require('node-telegram-bot-api');
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
+const router = express.Router();
 
-// Get all orders
-router.get('/orders', async (req, res) => {
+// File upload setup
+const storage = multer.diskStorage({
+  destination: './uploads/',
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  }
+});
+const upload = multer({ storage });
+
+// POST create new order
+router.post('/', async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
+    const { telegramId, items, deliveryOption, contact, total } = req.body;
+    if (!telegramId || !items || !contact || !total) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const newOrder = new Order({
+      telegramId,
+      phone: contact,
+      items,
+      total,
+      deliveryOption: deliveryOption || 'Pickup',
+    });
+
+    await newOrder.save();
+
+    // Notify admin on Telegram (bot instance will be attached in server.js)
+    if (req.app.get('bot')) {
+      const bot = req.app.get('bot');
+      bot.sendMessage(process.env.ADMIN_CHAT_ID, 
+        `New order received!\n` +
+        `Items: ${JSON.stringify(newOrder.items)}\n` +
+        `Contact: ${newOrder.phone}\n` +
+        `Delivery: ${newOrder.deliveryOption}\n` +
+        `Total: ${newOrder.total}\n` +
+        `Order ID: ${newOrder._id}`
+      ).catch(console.error);
+    }
+
+    res.status(201).json({ message: 'Order saved', orderId: newOrder._id });
   } catch (err) {
+    console.error('Order creation error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Update order status and/or QR code URL and notify customer
-router.post('/orders/:id/update', async (req, res) => {
-  const { status, qrCodeUrl } = req.body;
+// GET all orders (admin dashboard)
+router.get('/', async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
+    const orders = await Order.find().sort({ createdAt: -1 });
+    res.status(200).json(orders);
+  } catch (err) {
+    console.error('Failed to fetch orders:', err);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// POST upload QR code and send photo to customer
+router.post('/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    let notifyMessages = [];
-
-    if (status && status !== order.status) {
-      order.status = status;
-      const statusMessages = {
-        Confirmed: 'Your order has been confirmed! Thank you for ordering.',
-        Preparing: 'Good news! Your order is now being prepared.',
-        Enroute: 'Your order is on the way! Please be ready to receive it.',
-        Delivered: 'Your order has been delivered. Enjoy!',
-      };
-      if (statusMessages[status]) notifyMessages.push(statusMessages[status]);
-    }
-
-    if (qrCodeUrl && qrCodeUrl !== order.qrCodeUrl) {
-      order.qrCodeUrl = qrCodeUrl;
-      notifyMessages.push('Here is your payment QR code. Please scan to pay and confirm your order.');
-    }
-
+    order.qrFile = req.file.filename;
     await order.save();
 
-    for (const msg of notifyMessages) {
-      if (msg.includes('QR code')) {
-        await bot.sendPhoto(order.telegramId, qrCodeUrl, { caption: msg });
-      } else {
-        await bot.sendMessage(order.telegramId, msg);
-      }
+    const photoUrl = `${process.env.BACKEND_URL}/uploads/${order.qrFile}`;
+
+    if (req.app.get('bot')) {
+      const bot = req.app.get('bot');
+      await bot.sendPhoto(order.telegramId, photoUrl, {
+        caption: 'Scan this QR code to pay. Thank you!'
+      });
     }
 
-    res.json({ success: true, order });
+    res.status(200).json({ message: 'QR uploaded and sent to customer!' });
   } catch (err) {
-    console.error('Order update error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('QR upload/send error:', err);
+    res.status(500).json({ error: 'Failed to upload/send QR' });
   }
 });
 
