@@ -35,6 +35,7 @@ const Order = require('./models/Order');
 const bot = require('./telegram'); // telegram.js exports the bot
 const ADMIN_CHAT_ID = 7721709933;
 
+// Set Webhook
 bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
 
 // Telegram webhook route
@@ -46,8 +47,12 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
 // Save new order
 app.post('/api/orders', async (req, res) => {
   try {
+    console.log('Received order payload:', req.body); // Debug log
+
     const { telegramId, items, deliveryOption, contact, total } = req.body;
+
     if (!telegramId || !items || !contact || !total) {
+      console.warn('Missing required fields:', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -60,6 +65,7 @@ app.post('/api/orders', async (req, res) => {
     });
 
     await newOrder.save();
+    console.log('Order saved to database:', newOrder._id);
 
     await bot.sendMessage(ADMIN_CHAT_ID,
       `New order received!\n` +
@@ -99,7 +105,7 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
-// Get orders
+// Get all orders
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
