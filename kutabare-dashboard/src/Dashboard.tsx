@@ -14,12 +14,16 @@ import {
   Snackbar,
   Alert
 } from '@mui/material';
-import { fetchOrders, updateOrderStatus } from './api';
+import { fetchOrders, updateOrderStatus, Order } from './api';
 
 export default function Dashboard() {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   useEffect(() => {
     loadOrders();
@@ -36,7 +40,7 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  const handleUpdateStatus = async (orderId, newStatus) => {
+  const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
       await updateOrderStatus(orderId, newStatus);
       setSnackbar({ open: true, message: 'Order status updated', severity: 'success' });
@@ -86,13 +90,13 @@ export default function Dashboard() {
                   <TableCell>
                     {order.items.map((item, i) =>
                       <div key={i}>
-                        {item.name} {item.variant !== 'noVariant' ? `(${item.variant})` : ''} x {item.quantity || 1}
+                        {item.name} {item.variant !== 'noVariant' ? `(${item.variant})` : ''} x {item.quantity ?? 1}
                       </div>
                     )}
                   </TableCell>
                   <TableCell>{order.deliveryOption}</TableCell>
                   <TableCell>{order.total.toFixed(2)}</TableCell>
-                  <TableCell>{order.status || 'Pending'}</TableCell>
+                  <TableCell>{order.status ?? 'Pending'}</TableCell>
                   <TableCell>
                     <Button
                       variant="contained"
