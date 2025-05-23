@@ -1,86 +1,137 @@
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-
-interface Item {
-  name: string;
-  variant?: string;
-  quantity: number;
-  price: number;
-}
-
-interface Order {
-  _id: string;
-  phone: string;
-  deliveryOption: string;
-  total: number;
-  items: Item[];
-  qrFile?: string;
-}
+import React, { useEffect, useState } from 'react';
+import {
+  Box,
+  Typography,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Paper,
+  Button,
+  CircularProgress,
+  Snackbar,
+  Alert
+} from '@mui/material';
+import { fetchOrders, updateOrderStatus } from './api';
 
 export default function Dashboard() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [uploading, setUploading] = useState<string | null>(null);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
-    fetchOrders();
+    loadOrders();
   }, []);
 
-  const fetchOrders = async () => {
+  const loadOrders = async () => {
+    setLoading(true);
     try {
-      const res = await axios.get<Order[]>('/api/orders');
+      const res = await fetchOrders();
       setOrders(res.data);
-    } catch (err) {
-      console.error('Failed to fetch orders:', err);
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to load orders', severity: 'error' });
     }
+    setLoading(false);
   };
 
-  const handleUpload = async (orderId: string, file: File) => {
-    const formData = new FormData();
-    formData.append('qr', file);
-    setUploading(orderId);
+  const handleUpdateStatus = async (orderId, newStatus) => {
     try {
-      await axios.post(`/api/upload-qr/${orderId}`, formData);
-      alert('QR uploaded and sent to customer');
-      fetchOrders(); // refresh orders to get updated QR
-    } catch {
-      alert('Upload failed');
+      await updateOrderStatus(orderId, newStatus);
+      setSnackbar({ open: true, message: 'Order status updated', severity: 'success' });
+      loadOrders();
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to update status', severity: 'error' });
     }
-    setUploading(null);
   };
 
   return (
-    <div>
-      <h1>Orders</h1>
-      {orders.map(order => (
-        <div key={order._id} style={{ border: '1px solid #ccc', marginBottom: 10, padding: 10 }}>
-          <p><strong>Contact:</strong> {order.phone}</p>
-          <p><strong>Delivery:</strong> {order.deliveryOption}</p>
-          <p><strong>Total:</strong> ₱{order.total}</p>
-          <p><strong>Items:</strong></p>
-          <ul>
-            {order.items.map((item, i) => (
-              <li key={i}>
-                {item.name}{item.variant ? ` (${item.variant})` : ''} x{item.quantity} - ₱{item.price}
-              </li>
-            ))}
-          </ul>
-          {!order.qrFile ? (
-            <>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files && e.target.files[0] && handleUpload(order._id, e.target.files[0])}
-                disabled={uploading === order._id}
-              />
-              {uploading === order._id && <p>Uploading...</p>}
-            </>
-          ) : (
-            <a href={`/uploads/${order.qrFile}`} target="_blank" rel="noreferrer" style={{ color: 'blue', textDecoration: 'underline' }}>
-              View uploaded QR
-            </a>
-          )}
-        </div>
-      ))}
-    </div>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>Kutabare Orders Dashboard</Typography>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Order ID</TableCell>
+                <TableCell>Customer Telegram ID</TableCell>
+                <TableCell>Contact</TableCell>
+                <TableCell>Items</TableCell>
+                <TableCell>Delivery</TableCell>
+                <TableCell>Total (₱)</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Update Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {orders.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">
+                    No orders found
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {orders.map(order => (
+                <TableRow key={order._id}>
+                  <TableCell>{order._id}</TableCell>
+                  <TableCell>{order.telegramId}</TableCell>
+                  <TableCell>{order.phone}</TableCell>
+                  <TableCell>
+                    {order.items.map((item, i) =>
+                      <div key={i}>
+                        {item.name} {item.variant !== 'noVariant' ? `(${item.variant})` : ''} x {item.quantity || 1}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>{order.deliveryOption}</TableCell>
+                  <TableCell>{order.total.toFixed(2)}</TableCell>
+                  <TableCell>{order.status || 'Pending'}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => handleUpdateStatus(order._id, 'Processing')}
+                      sx={{ mr: 1 }}
+                    >
+                      Processing
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="success"
+                      onClick={() => handleUpdateStatus(order._id, 'Completed')}
+                    >
+                      Completed
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }
