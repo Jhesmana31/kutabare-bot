@@ -1,4 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 const { getCategories, getProductList } = require('./data/products');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
@@ -108,16 +109,36 @@ bot.on('callback_query', async (query) => {
       `- ${item.name} (${item.variant !== 'noVariant' ? item.variant : 'No Variant'})`
     ).join('\n');
 
-    // Send to admin
+    const itemsForBackend = cart.map(item => ({
+      name: item.name,
+      variant: item.variant,
+      price: 80, // Temporary. Replace with actual product price from DB
+      quantity: 1
+    }));
+
+    const total = itemsForBackend.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    try {
+      await axios.post(`${process.env.BACKEND_URL}/api/orders`, {
+        telegramId: chatId,
+        items: itemsForBackend,
+        contact: '09123456789', // Placeholder. Can ask user for this later
+        total,
+        deliveryOption: 'Pickup' // Default. Can let user choose later
+      });
+    } catch (err) {
+      console.error('Order save failed:', err.message);
+      bot.sendMessage(chatId, 'Ayyy. Di ko masave order mo boss. PM mo ako manually please.');
+      return;
+    }
+
     const adminId = 7699555744;
     bot.sendMessage(adminId, `NEW ORDER ALERT from ${chatId}:\n\n${orderList}`);
 
-    // Confirm to buyer
     bot.sendMessage(chatId, `Ayos! Order confirmed:\n\n${orderList}\n\nHintayin mo lang ang QR or payment link na ipapadala ko once ready ha.`, {
       parse_mode: 'Markdown'
     });
 
-    // Clear cart
     userCarts[chatId] = [];
   }
 
