@@ -34,10 +34,10 @@ export const updateNextStatus = async (order: Order) => {
   const timeline = ['Received', 'Order Confirmed', 'Preparing', 'Enroute'];
   const currentIndex = timeline.indexOf(order.status || 'Received');
   if (currentIndex === -1 || currentIndex === timeline.length - 1) {
-    return null; // no next status
+    return null;
   }
   const nextStatus = timeline[currentIndex + 1];
-  const response = await updateOrderStatus(order._id, nextStatus);
+  const response = await axios.patch(`${BASE_URL}/api/orders/${order._id}`, { orderStatus: nextStatus });
   return response.data;
 };
 
