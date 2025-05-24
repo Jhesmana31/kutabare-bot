@@ -23,11 +23,13 @@ const orderSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    default: 'Pending' // options: 'Pending', 'Paid'
+    enum: ['Pending', 'Paid'],
+    default: 'Pending'
   },
   orderStatus: {
     type: String,
-    default: 'Pending' // options: 'Pending', 'Preparing', 'Ready for Pickup', 'Out for Delivery', 'Completed'
+    enum: ['Pending', 'Preparing', 'Ready for Pickup', 'Out for Delivery', 'Completed'],
+    default: 'Pending'
   },
   qrFile: {
     type: String
