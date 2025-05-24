@@ -9,24 +9,29 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  items: [
-    {
-      name: String,
-      variant: String,
-      price: Number,
-      quantity: Number
-    }
-  ],
+  items: {
+    type: Array,
+    required: true
+  },
   total: {
     type: Number,
     required: true
   },
   deliveryOption: {
     type: String,
-    enum: ['Pickup', 'Same-day Delivery'],
     default: 'Pickup'
   },
-  qrFile: String
+  paymentStatus: {
+    type: String,
+    default: 'Pending' // options: 'Pending', 'Paid'
+  },
+  orderStatus: {
+    type: String,
+    default: 'Pending' // options: 'Pending', 'Preparing', 'Ready for Pickup', 'Out for Delivery', 'Completed'
+  },
+  qrFile: {
+    type: String
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
