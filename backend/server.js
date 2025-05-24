@@ -63,14 +63,20 @@ app.post('/api/orders', async (req, res) => {
 
     await newOrder.save();
 
-    await bot.sendMessage(ADMIN_CHAT_ID,
-      `New order received!\n` +
-      `Items: ${JSON.stringify(newOrder.items)}\n` +
+    // Format items nicely for Telegram message
+    const itemsList = newOrder.items.map(
+      (item, idx) => `${idx + 1}. ${item.name} - ${item.variant || ''} - Php ${item.price} x${item.quantity}`
+    ).join('\n');
+
+    const message = 
+      `New order received!\n\n` +
+      `Items:\n${itemsList}\n\n` +
       `Contact: ${newOrder.phone}\n` +
       `Delivery: ${newOrder.deliveryOption}\n` +
-      `Total: ${newOrder.total}\n` +
-      `Order ID: ${newOrder._id}`
-    );
+      `Total: Php ${newOrder.total}\n` +
+      `Order ID: ${newOrder._id}`;
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message);
 
     res.status(201).json({ message: 'Order saved', orderId: newOrder._id });
   } catch (err) {
