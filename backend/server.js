@@ -13,10 +13,8 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
 // File upload config
@@ -48,11 +46,9 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
 app.post('/api/orders', async (req, res) => {
   try {
     const { telegramId, items, deliveryOption, contact, total } = req.body;
-
     if (!telegramId || !items || !contact || !total) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-
     const newOrder = new Order({
       telegramId,
       phone: contact,
@@ -63,12 +59,12 @@ app.post('/api/orders', async (req, res) => {
 
     await newOrder.save();
 
-    // Format items nicely for Telegram message
+    // Notify admin
     const itemsList = newOrder.items.map(
       (item, idx) => `${idx + 1}. ${item.name} - ${item.variant || ''} - Php ${item.price} x${item.quantity}`
     ).join('\n');
 
-    const message = 
+    const message =
       `New order received!\n\n` +
       `Items:\n${itemsList}\n\n` +
       `Contact: ${newOrder.phone}\n` +
@@ -107,6 +103,34 @@ app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   }
 });
 
+// *** NEW: Upload payment proof ***
+app.post('/api/upload-proof/:orderId', upload.single('proof'), async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    order.paymentProof = req.file.filename;
+    order.paymentStatus = 'Payment Received'; // auto-update payment status
+    await order.save();
+
+    // Notify customer
+    const proofUrl = `${process.env.BACKEND_URL}/uploads/${order.paymentProof}`;
+    await bot.sendPhoto(order.telegramId, proofUrl, {
+      caption: 'Natanggap na namin ang payment proof mo boss. Salamat! Your payment status is now *Payment Received*.',
+      parse_mode: 'Markdown'
+    });
+
+    // Notify admin
+    await bot.sendMessage(ADMIN_CHAT_ID,
+      `Payment proof received for order #${order._id}.\nPayment status updated to Payment Received.`);
+
+    res.status(200).json({ message: 'Payment proof uploaded and payment status updated!' });
+  } catch (err) {
+    console.error('Payment proof upload error:', err);
+    res.status(500).json({ error: 'Failed to upload payment proof' });
+  }
+});
+
 // Get all orders
 app.get('/api/orders', async (req, res) => {
   try {
@@ -125,20 +149,16 @@ app.patch('/api/orders/:id', async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'Order not found' });
 
     let notifyMsg = '';
-
     if (req.body.paymentStatus) {
       notifyMsg = `Hello! Your order #${updated._id} has been marked as *${req.body.paymentStatus}*. Thank you!`;
     }
-
     if (req.body.orderStatus) {
       notifyMsg = `Update for order #${updated._id}: Status changed to *${req.body.orderStatus}*.`;
     }
-
     if (notifyMsg) {
       await bot.sendMessage(updated.telegramId, notifyMsg, { parse_mode: 'Markdown' });
       await bot.sendMessage(ADMIN_CHAT_ID, `Order #${updated._id} updated.\nPayment: ${updated.paymentStatus || '-'}\nStatus: ${updated.orderStatus || '-'}`);
     }
-
     res.json(updated);
   } catch (err) {
     console.error('Update order error:', err);
