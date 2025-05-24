@@ -23,7 +23,7 @@ const orderSchema = new mongoose.Schema({
   },
   deliveryOption: {
     type: String,
-    enum: ['Pickup', 'Same Day Delivery'],
+    enum: ['Pickup', 'Same-day Delivery'],
     default: 'Pickup'
   },
   qrFile: String
