@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+const BASE_URL = 'https://kutabare-backend.onrender.com'; // or your correct Render backend URL
 
 export interface OrderItem {
   name: string;
