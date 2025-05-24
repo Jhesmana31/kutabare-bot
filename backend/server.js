@@ -42,17 +42,14 @@ bot.setWebHook(`${process.env.BACKEND_URL}/bot${process.env.BOT_TOKEN}`);
 app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
-}); 
+});
 
-// Save new order
+// Create order
 app.post('/api/orders', async (req, res) => {
   try {
-    console.log('Received order payload:', req.body); // Debug log
-
     const { telegramId, items, deliveryOption, contact, total } = req.body;
 
     if (!telegramId || !items || !contact || !total) {
-      console.warn('Missing required fields:', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -65,7 +62,6 @@ app.post('/api/orders', async (req, res) => {
     });
 
     await newOrder.save();
-    console.log('Order saved to database:', newOrder._id);
 
     await bot.sendMessage(ADMIN_CHAT_ID,
       `New order received!\n` +
@@ -113,6 +109,34 @@ app.get('/api/orders', async (req, res) => {
   } catch (err) {
     console.error('Fetch orders error:', err);
     res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// Update order status and notify
+app.patch('/api/orders/:id', async (req, res) => {
+  try {
+    const updated = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+
+    let notifyMsg = '';
+
+    if (req.body.paymentStatus) {
+      notifyMsg = `Hello! Your order #${updated._id} has been marked as *${req.body.paymentStatus}*. Thank you!`;
+    }
+
+    if (req.body.orderStatus) {
+      notifyMsg = `Update for order #${updated._id}: Status changed to *${req.body.orderStatus}*.`;
+    }
+
+    if (notifyMsg) {
+      await bot.sendMessage(updated.telegramId, notifyMsg, { parse_mode: 'Markdown' });
+      await bot.sendMessage(ADMIN_CHAT_ID, `Order #${updated._id} updated.\nPayment: ${updated.paymentStatus || '-'}\nStatus: ${updated.orderStatus || '-'}`);
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Update order error:', err);
+    res.status(500).json({ error: 'Failed to update order' });
   }
 });
 
