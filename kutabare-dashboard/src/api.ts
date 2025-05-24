@@ -16,6 +16,7 @@ export interface Order {
   deliveryOption: string;
   total: number;
   status?: string;
+  qrFile?: string; // optional, if you want to track uploaded QR filename
 }
 
 export const fetchOrders = () => {
@@ -24,4 +25,15 @@ export const fetchOrders = () => {
 
 export const updateOrderStatus = (orderId: string, status: string) => {
   return axios.put(`${BASE_URL}/api/orders/${orderId}`, { status });
+};
+
+export const uploadOrderQR = (orderId: string, file: File) => {
+  const formData = new FormData();
+  formData.append('qr', file);
+
+  return axios.post(`${BASE_URL}/api/upload-qr/${orderId}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
 };
