@@ -26,7 +26,7 @@ export const fetchOrders = () => {
 
 // Update order status explicitly
 export const updateOrderStatus = (orderId: string, status: string) => {
-  return axios.put(`${BASE_URL}/api/orders/${orderId}`, { status });
+  return axios.patch(`${BASE_URL}/api/orders/${orderId}`, { orderStatus: status });
 };
 
 // Update order status to next stage in timeline
