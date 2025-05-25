@@ -7,22 +7,22 @@ const cart = require('./utils/cart');
 const app = express();
 app.use(express.json());
 
-// Initialize bot without polling
+// Initialize bot with webhook (no polling)
 const bot = new TelegramBot(process.env.BOT_TOKEN);
 bot.setWebHook(`${process.env.BASE_URL}/bot${process.env.BOT_TOKEN}`);
 
-// Use URL-safe encoding instead of base64
+// Base64-safe callback_data encoder/decoder
 function encodeData(type, category, product = '', variant = '') {
-  return `cb_${type}_${encodeURIComponent(category)}_${encodeURIComponent(product)}_${encodeURIComponent(variant)}`;
+  return `cb_${type}_${Buffer.from(category).toString('base64')}_${Buffer.from(product).toString('base64')}_${variant ? Buffer.from(variant).toString('base64') : ''}`;
 }
 
 function decodeData(data) {
   const [_, type, catEncoded, prodEncoded, variantEncoded] = data.split('_');
   return {
     type,
-    category: decodeURIComponent(catEncoded),
-    product: decodeURIComponent(prodEncoded),
-    variant: variantEncoded ? decodeURIComponent(variantEncoded) : null
+    category: Buffer.from(catEncoded, 'base64').toString(),
+    product: Buffer.from(prodEncoded, 'base64').toString(),
+    variant: variantEncoded ? Buffer.from(variantEncoded, 'base64').toString() : null
   };
 }
 
@@ -63,11 +63,11 @@ bot.on('callback_query', (query) => {
     if (!categoryProducts) return;
 
     const productNames = Object.keys(categoryProducts);
-
-    const buttons = productNames.map(p => [{
-      text: p,
-      callback_data: encodeData('product', category, p)
-    }]);
+    const buttons = productNames.map(p => {
+      const item = categoryProducts[p];
+      const label = typeof item === 'object' && item.label ? item.label : p;
+      return [{ text: label, callback_data: encodeData('product', category, p) }];
+    });
 
     buttons.push([{ text: 'Back to Categories', callback_data: 'cb_back_main' }]);
 
@@ -80,28 +80,32 @@ bot.on('callback_query', (query) => {
   if (type === 'product') {
     const productData = products[category][product];
 
-    if (typeof productData === 'object') {
-      const buttons = Object.keys(productData).map(v => [{
+    if (typeof productData === 'object' && !productData.price) {
+      const buttons = Object.keys(productData).filter(k => k !== 'label').map(v => [{
         text: `${v} - Php ${productData[v]}`,
         callback_data: encodeData('variant', category, product, v)
       }]);
 
       buttons.push([{ text: 'Back to Categories', callback_data: 'cb_back_main' }]);
 
-      bot.sendMessage(chatId, `Variants of *${product}*:`, {
+      const label = productData.label || product;
+      bot.sendMessage(chatId, `Variants of *${label}*:`, {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: buttons }
       });
     } else {
-      cart.add(chatId, { category, product, price: productData });
-      bot.sendMessage(chatId, `✅ Added *${product}* to your cart.`, { parse_mode: 'Markdown' });
+      const label = productData.label || product;
+      cart.add(chatId, { category, product: label, price: productData.price || productData });
+      bot.sendMessage(chatId, `✅ Added *${label}* to your cart.`, { parse_mode: 'Markdown' });
     }
   }
 
   if (type === 'variant') {
     const price = products[category][product][variant];
-    cart.add(chatId, { category, product, variant, price });
-    bot.sendMessage(chatId, `✅ Added *${product}* (${variant}) to your cart.`, { parse_mode: 'Markdown' });
+    const base = products[category][product];
+    const label = base.label || product;
+    cart.add(chatId, { category, product: label, variant, price });
+    bot.sendMessage(chatId, `✅ Added *${label}* (${variant}) to your cart.`, { parse_mode: 'Markdown' });
   }
 });
 
@@ -126,11 +130,12 @@ bot.onText(/\/cart/, (msg) => {
   bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 });
 
-// Base route
+// Home route
 app.get('/', (req, res) => {
   res.send('Kutabare Bot Server is running.');
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
