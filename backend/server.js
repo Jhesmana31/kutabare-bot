@@ -23,21 +23,6 @@ mongoose.connect(MONGO_URI, {
   process.exit(1);
 });
 
-// Order model
-const OrderSchema = new mongoose.Schema({
-  telegramId: Number,
-  items: [{
-    name: String,
-    variant: String,
-    quantity: Number
-  }],
-  contact: String,
-  deliveryOption: String,
-  total: Number,
-  createdAt: { type: Date, default: Date.now },
-});
-const Order = mongoose.model('Order', OrderSchema);
-
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BACKEND_URL = process.env.BACKEND_URL;
 const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${BOT_TOKEN}`;
