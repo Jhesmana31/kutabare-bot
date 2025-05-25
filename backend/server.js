@@ -15,11 +15,12 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new Telegraf(BOT_TOKEN);
 app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
-bot.telegram.setWebhook(WEBHOOK_URL); // Webhook set once here
+bot.telegram.setWebhook(WEBHOOK_URL);
 
-// In-memory store
+// In-memory stores
 const userStates = {}, userCarts = {}, userOrderData = {};
 
+// Get product price
 function findProductPrice(name) {
   const all = getCategories().flatMap(getProductList);
   const item = all.find(p => p.name === name);
@@ -47,7 +48,9 @@ bot.on('callback_query', async ctx => {
   if (data === 'view_products') {
     const buttons = getCategories().map(c => [{ text: c, callback_data: `cat_${c}` }]);
     return ctx.editMessageText('Pili ka ng category:', {
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]] }
+      reply_markup: {
+        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]]
+      }
     });
   }
 
@@ -55,12 +58,14 @@ bot.on('callback_query', async ctx => {
     const cat = data.replace('cat_', '');
     const items = getProductList(cat);
     const buttons = items.map(p => [{
-      text: p.name + (p.variants ? ' ▶' : ''),
+      text: `${p.name} - ₱${p.price}${p.variants ? ' ▶' : ''}`,
       callback_data: p.variants ? `variants_${p.name}` : `add_${p.name}_noVariant`
     }]);
     return ctx.editMessageText(`🧃 *${cat}*`, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
+      reply_markup: {
+        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]]
+      }
     });
   }
 
@@ -68,10 +73,15 @@ bot.on('callback_query', async ctx => {
     const name = data.replace('variants_', '');
     const all = getCategories().flatMap(getProductList);
     const prod = all.find(p => p.name === name);
-    const buttons = prod.variants.map(v => [{ text: v, callback_data: `add_${name}_${v}` }]);
+    const price = prod?.price || 0;
+    const buttons = prod.variants.map(v => [{
+      text: `${v} - ₱${price}`, callback_data: `add_${name}_${v}`
+    }]);
     return ctx.editMessageText(`Pili ng variant for *${name}*`, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
+      reply_markup: {
+        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]]
+      }
     });
   }
 
@@ -107,7 +117,9 @@ bot.on('callback_query', async ctx => {
   if (data.startsWith('delivery_')) {
     userOrderData[id].delivery = data.split('_')[1];
     userStates[id] = 'awaiting_contact';
-    return ctx.editMessageText('Pakibigay ng *contact info* (Name, Number, Address):', { parse_mode: 'Markdown' });
+    return ctx.editMessageText('Pakibigay ng *contact info* (Name, Number, Address):', {
+      parse_mode: 'Markdown'
+    });
   }
 
   if (data === 'back_main') {
@@ -132,7 +144,8 @@ bot.on('message', async ctx => {
   const cart = userCarts[id];
   const lines = Object.entries(cart).map(([k, q]) => {
     const [n, v] = k.split('_');
-    return `${n} (${v}) x${q} - ₱${q * findProductPrice(n)}`;
+    const price = findProductPrice(n);
+    return `${n} (${v}) x${q} - ₱${q * price}`;
   }).join('\n');
 
   const total = Object.entries(cart).reduce((sum, [k, q]) => {
@@ -150,7 +163,7 @@ bot.on('message', async ctx => {
 
   try {
     await axios.post(`${BACKEND_URL}/api/orders`, order);
-    await ctx.replyWithMarkdown(`✅ Order received!\nHintayin ang QR code for payment. Salamat boss!`);
+    await ctx.replyWithMarkdown(`✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\nHintayin ang QR code for payment. Salamat boss!`);
     await bot.telegram.sendMessage(ADMIN_ID,
       `New order:\nTotal: ₱${total}\nContact: ${order.contact}\nDelivery: ${order.delivery}`
     );
@@ -180,11 +193,7 @@ app.post('/payment-webhook', async (req, res) => {
 
 // Final server start
 const PORT = process.env.PORT;
-if (!PORT) {
-  throw new Error("PORT is not defined. This is required by Render.");
-}
-
+if (!PORT) throw new Error("PORT is not defined. This is required by Render.");
 app.listen(PORT, () => {
   console.log(`Kutabare backend live on ${PORT}`);
-});
 });
