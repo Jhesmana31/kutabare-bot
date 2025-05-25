@@ -5,6 +5,8 @@ const axios = require('axios');
 const { Telegraf } = require('telegraf');
 const { getCategories, getProductList } = require('./data/products');
 
+const ordersRouter = require('./routes/orders');  // <-- added import here
+
 const app = express();
 app.use(bodyParser.json());
 
@@ -190,6 +192,9 @@ app.post('/payment-webhook', async (req, res) => {
     res.status(500).send('Error');
   }
 });
+
+// Attach the orders routes
+app.use('/api/orders', ordersRouter);  // <-- added this
 
 // Final server start
 const PORT = process.env.PORT;
