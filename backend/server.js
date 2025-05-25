@@ -19,13 +19,18 @@ const qrPending = {};
 
 const ADMIN_ID = process.env.ADMIN_ID;
 
+// Helper function: validate phone number (digits only, optional leading +)
+function isValidPhoneNumber(text) {
+  return /^(\+?\d{7,15})$/.test(text.trim());
+}
+
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 
-// Categories and sample products map (keys for callback data)
+// Categories and sample products map
 const categories = [
   { key: 'CockRings', label: 'Cock Rings & Toys' },
   { key: 'Lubes', label: 'Lubes & Condoms' },
@@ -55,8 +60,32 @@ bot.command('order', async ctx => {
   const buttons = categories.map(cat => [{ text: cat.label, callback_data: `category_${cat.key}` }]);
 
   await ctx.reply('Please choose a category:', {
-    reply_markup: { inline_keyboard: buttons }
+    reply_markup: { inline_keyboard: buttons },
   });
+});
+
+// /viewcart command to show current cart contents
+bot.command('viewcart', ctx => {
+  const id = ctx.from.id;
+  const cart = userCarts[id];
+  if (!cart || Object.keys(cart).length === 0) {
+    return ctx.reply('Your cart is empty. Add some products first!');
+  }
+  const lines = Object.entries(cart).map(([name, qty]) => `${qty}x ${name}`).join('\n');
+  ctx.reply(`Your cart:\n${lines}\n\nTo remove an item, type "Remove <product name>"`);
+});
+
+// Remove item from cart by text "Remove <product>"
+bot.hears(/^Remove (.+)$/i, ctx => {
+  const id = ctx.from.id;
+  const cart = userCarts[id];
+  if (!cart) return ctx.reply('You have no items in cart.');
+
+  const product = ctx.match[1].trim();
+  if (!cart[product]) return ctx.reply(`Product "${product}" not found in your cart.`);
+
+  delete cart[product];
+  ctx.reply(`Removed "${product}" from your cart.`);
 });
 
 // Handle callback queries for categories, products, checkout, back
@@ -77,7 +106,7 @@ bot.on('callback_query', async ctx => {
     buttons.push([{ text: 'Checkout', callback_data: 'checkout' }]);
 
     await ctx.editMessageText('Select a product:', {
-      reply_markup: { inline_keyboard: buttons }
+      reply_markup: { inline_keyboard: buttons },
     });
     await ctx.answerCbQuery();
     return;
@@ -86,11 +115,9 @@ bot.on('callback_query', async ctx => {
   // Back to categories
   if (data === 'back_to_categories') {
     userStates[id] = 'selecting_category';
-
     const buttons = categories.map(cat => [{ text: cat.label, callback_data: `category_${cat.key}` }]);
-
     await ctx.editMessageText('Choose another category:', {
-      reply_markup: { inline_keyboard: buttons }
+      reply_markup: { inline_keyboard: buttons },
     });
     await ctx.answerCbQuery();
     return;
@@ -112,7 +139,6 @@ bot.on('callback_query', async ctx => {
       await ctx.answerCbQuery('Cart is empty! Add products first.');
       return;
     }
-
     userStates[id] = 'collecting_delivery';
 
     // Delivery options as inline buttons
@@ -122,8 +148,8 @@ bot.on('callback_query', async ctx => {
           [{ text: 'Pick up', callback_data: 'delivery_pickup' }],
           [{ text: 'Same-day delivery', callback_data: 'delivery_sameday' }],
           [{ text: 'Back to Categories', callback_data: 'back_to_categories' }],
-        ]
-      }
+        ],
+      },
     });
     await ctx.answerCbQuery();
     return;
@@ -144,8 +170,14 @@ bot.on('callback_query', async ctx => {
 // Handle contact number sent as normal text when state = collecting_contact
 bot.on('text', async ctx => {
   const id = ctx.from.id;
+
+  // Ignore commands here, only proceed if in collecting_contact state
   if (userStates[id] === 'collecting_contact') {
-    userOrderData[id].contact = ctx.message.text;
+    const contactText = ctx.message.text.trim();
+    if (!isValidPhoneNumber(contactText)) {
+      return ctx.reply('Please send a valid contact number (digits only, optionally starting with +).');
+    }
+    userOrderData[id].contact = contactText;
 
     const cart = userCarts[id] || {};
     const orderData = {
@@ -155,10 +187,9 @@ bot.on('text', async ctx => {
       deliveryOption: userOrderData[id].deliveryOption,
     };
 
-    // Calculate total (replace with your real prices)
+    // Calculate total
     let total = 0;
     for (const [name, qty] of Object.entries(cart)) {
-      // Extract price from name string, e.g. "Cock Ring - ₱80"
       const priceMatch = name.match(/₱(\d+)/);
       const price = priceMatch ? parseInt(priceMatch[1]) : 0;
       total += price * qty;
@@ -189,11 +220,10 @@ bot.on('text', async ctx => {
 });
 
 // Handle photos for QR and proof as before (no change needed)
-
 bot.on('photo', async ctx => {
   const id = ctx.chat.id;
 
-  // ADMIN uploads QR code with caption "QR:<orderId>"
+  // ADMIN uploads QR code with caption "QR:"
   if (id == ADMIN_ID && ctx.message.caption?.startsWith('QR:')) {
     const orderId = ctx.message.caption.split('QR:')[1].trim();
     const order = await Order.findById(orderId);
@@ -212,7 +242,6 @@ bot.on('photo', async ctx => {
   if (proofWaitList[id]) {
     const orderId = proofWaitList[id];
     const fileId = ctx.message.photo.pop().file_id;
-
     const order = await Order.findById(orderId);
     if (!order) return ctx.reply('Invalid order.');
 
