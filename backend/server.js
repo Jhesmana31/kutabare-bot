@@ -1,287 +1,244 @@
+const { Telegraf } = require('telegraf');
 const express = require('express');
-const mongoose = require('mongoose');
-const bodyParser = require('body-parser');
-const { Telegraf, Markup } = require('telegraf');
-const Order = require('./models/Order');
-require('dotenv').config();
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
-app.use(bodyParser.json());
+const PORT = process.env.PORT || 10000;
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-
-const ADMIN_ID = '7699555744';
-
-const categories = {
-  'Cock Rings & Toys': [
-    { name: 'Cock Ring - Pack of 3', price: 80 },
-    { name: 'Cock Ring Vibrator', price: 60 },
-    { name: 'Spikey Jelly (Red)', price: 160 },
-    { name: 'Spikey Jelly (Black)', price: 160 },
-    { name: '"Th Bolitas" Jelly', price: 160 },
-    { name: 'Portable Wired Vibrator Egg', price: 130 },
-    { name: '7 Inches African Version Dildo', price: 270 },
-    {
-      name: 'Masturbator Cup',
-      price: 120,
-      variants: ['Yellow (Mouth)', 'Gray (Arse)', 'Black (Vagina)'],
-    },
-  ],
-  'Lubes & Condoms': [
-    { name: 'Monogatari Lube Tube', price: 120 },
-    { name: 'Monogatari Lube Pinhole', price: 120 },
-    {
-      name: 'Monogatari Flavored Lube',
-      price: 200,
-      variants: ['Peach', 'Strawberry', 'Cherry'],
-    },
-    {
-      name: 'Ultra thin 001 Condom',
-      price: 90,
-      variants: ['Black', 'Long Battle', 'Blue', 'Naked Pleasure', 'Granule Passion'],
-    },
-  ],
-  'Performance Enhancers': [
-    { name: 'Maxman per Tab', price: 40 },
-    { name: 'Maxman per Pad', price: 400 },
-  ],
-  'Spicy Accessories': [
-    { name: 'Delay Collar', price: 200 },
-    { name: 'Delay Ejaculation Buttplug', price: 200 },
-  ],
-  'Essentials': [
-    {
-      name: 'Eucalyptus Menthol Food Grade',
-      price: 0,
-      variants: ['15-20 (1k)', '25-30 (1.5k)', '35-40 (2k)'],
-    },
-    {
-      name: 'Mouth Fresheners',
-      price: 90,
-      variants: ['Peach', 'Mint'],
-    },
-    { name: 'Insulin Syringe', price: 20 },
-    { name: 'Sterile Water for Injection', price: 15 },
-  ],
-};
-
+// In-memory user carts { userId: [ { name, price } ] }
 const userCarts = {};
-const userStates = {};
-const userOrderData = {};
-const qrPending = {};
-const proofWaitList = {};
 
-bot.start(async (ctx) => {
-  const id = ctx.from.id.toString();
-  userCarts[id] = [];
-  userStates[id] = 'CATEGORY_SELECTION';
-  await ctx.reply('Welcome to Kutabare Online Shop! Pili ka muna ng category:', categoryInlineButtons());
-});
-
-function categoryInlineButtons() {
-  const buttons = Object.keys(categories).map(cat => [Markup.button.callback(cat, `category_${cat}`)]);
-  buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
-  buttons.push([Markup.button.callback('✅ Checkout', 'checkout')]);
-  return Markup.inlineKeyboard(buttons);
-}
-
-function productInlineButtons(category) {
-  const items = categories[category];
-  const buttons = items.map(p => [Markup.button.callback(`${p.name} - ₱${p.price}`, `product_${category}_${p.name}`)]);
-  buttons.push([Markup.button.callback('⬅️ Back to Categories', 'back_to_categories')]);
-  buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
-  buttons.push([Markup.button.callback('✅ Checkout', 'checkout')]);
-  return Markup.inlineKeyboard(buttons);
-}
-
-function variantInlineButtons(productName, category) {
-  const product = categories[category].find(p => p.name === productName);
-  if (!product || !product.variants) return null;
-  const buttons = product.variants.map(v => [Markup.button.callback(v, `variant_${category}_${productName}_${v}`)]);
-  buttons.push([Markup.button.callback('⬅️ Back to Products', `back_to_products_${category}`)]);
-  return Markup.inlineKeyboard(buttons);
-}
-
-function cartSummary(id) {
-  const cart = userCarts[id] || [];
-  if (cart.length === 0) return 'Your cart is empty.';
-  let total = 0;
-  let summary = 'Your cart items:\n\n';
-  cart.forEach((item, idx) => {
-    summary += `${idx + 1}. ${item.name} - ₱${item.price}\n`;
-    total += item.price;
-  });
-  summary += `\nTotal: ₱${total}`;
-  return summary;
-}
-
-bot.action(/category_(.+)/, async (ctx) => {
-  const category = ctx.match[1];
-  const id = ctx.from.id.toString();
-  userStates[id] = `PRODUCT_SELECTION:${category}`;
-  await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineButtons(category));
-  await ctx.answerCbQuery();
-});
-
-bot.action(/product_(.+)_(.+)/, async (ctx) => {
-  const category = ctx.match[1];
-  const productName = ctx.match[2];
-  const id = ctx.from.id.toString();
-  const product = categories[category].find(p => p.name === productName);
-  if (!product) return ctx.answerCbQuery('Product not found.');
-
-  if (product.variants) {
-    userStates[id] = `VARIANT_SELECTION:${productName}:${category}`;
-    await ctx.editMessageText(`Pili ng variant para sa ${productName}:`, variantInlineButtons(productName, category));
-  } else {
-    userCarts[id].push({ name: productName, price: product.price });
-    userStates[id] = 'CATEGORY_SELECTION';
-    await ctx.editMessageText(`${productName} added to cart!`, categoryInlineButtons());
-  }
-  await ctx.answerCbQuery();
-});
-
-bot.action(/variant_(.+)_(.+)_(.+)/, async (ctx) => {
-  const category = ctx.match[1];
-  const productName = ctx.match[2];
-  const variant = ctx.match[3];
-  const id = ctx.from.id.toString();
-
-  const product = categories[category].find(p => p.name === productName);
-  if (!product || !product.variants.includes(variant)) return ctx.answerCbQuery('Invalid variant.');
-
-  userCarts[id].push({ name: `${productName} - ${variant}`, price: product.price });
-  userStates[id] = 'CATEGORY_SELECTION';
-  await ctx.editMessageText(`${productName} (${variant}) added to cart!`, categoryInlineButtons());
-  await ctx.answerCbQuery();
-});
-
-bot.action('back_to_categories', async (ctx) => {
-  const id = ctx.from.id.toString();
-  userStates[id] = 'CATEGORY_SELECTION';
-  await ctx.editMessageText('Balik sa categories:', categoryInlineButtons());
-  await ctx.answerCbQuery();
-});
-
-bot.action(/back_to_products_(.+)/, async (ctx) => {
-  const category = ctx.match[1];
-  const id = ctx.from.id.toString();
-  userStates[id] = `PRODUCT_SELECTION:${category}`;
-  await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineButtons(category));
-  await ctx.answerCbQuery();
-});
-
-bot.action('view_cart', async (ctx) => {
-  const id = ctx.from.id.toString();
-  const summary = cartSummary(id);
-  await ctx.answerCbQuery();
-  await ctx.reply(summary);
-});
-
-bot.action('checkout', async (ctx) => {
-  const id = ctx.from.id.toString();
-  if (!userCarts[id] || userCarts[id].length === 0) {
-    await ctx.answerCbQuery('Wala ka pang laman sa cart!');
-    return;
-  }
-  userStates[id] = 'DELIVERY_OPTION';
-  await ctx.editMessageText('Pili ng delivery option:', Markup.inlineKeyboard([
-    [Markup.button.callback('Pick up', 'delivery_pickup')],
-    [Markup.button.callback('Same-day Delivery', 'delivery_sameday')],
-    [Markup.button.callback('⬅️ Back to Categories', 'back_to_categories')],
-  ]));
-  await ctx.answerCbQuery();
-});
-
-bot.action(/delivery_(.+)/, async (ctx) => {
-  const id = ctx.from.id.toString();
-  const deliveryOption = ctx.match[1] === 'pickup' ? 'Pick up' : 'Same-day Delivery';
-  userOrderData[id] = { deliveryOption };
-  userStates[id] = 'AWAITING_CONTACT';
-  await ctx.editMessageText('Please enter your contact number:');
-  await ctx.answerCbQuery();
-});
-
-bot.on('text', async (ctx) => {
-  const id = ctx.from.id.toString();
-  const state = userStates[id] || 'CATEGORY_SELECTION';
-  const text = ctx.message.text;
-
-  if (state === 'AWAITING_CONTACT') {
-    const phone = text.trim();
-    const cart = userCarts[id] || [];
-    const deliveryOption = userOrderData[id].deliveryOption;
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
-
-    if (cart.length === 0) {
-      await ctx.reply('Your cart is empty.');
-      userStates[id] = 'CATEGORY_SELECTION';
-      return;
-    }
-
-    const newOrder = new Order({
-      telegramId: id,
-      items: cart,
-      deliveryOption,
-      contact: phone,
-      status: 'Pending Payment',
-    });
-    await newOrder.save();
-
-    const lines = cart.map(i => `• ${i.name} - ₱${i.price}`).join('\n');
-    await ctx.reply(`Order placed! Total: ₱${total}\nWait for the QR code for payment.`);
-
-    await bot.telegram.sendMessage(ADMIN_ID,
-      `New order received from @${ctx.from.username || ctx.from.first_name}:\n\n${lines}\n\nDelivery: ${deliveryOption}\nContact: ${phone}\nTotal: ₱${total}\n\nOrder ID: ${newOrder._id}`
-    );
-
-    qrPending[newOrder._id] = id;
-
-    delete userCarts[id];
-    delete userStates[id];
-    delete userOrderData[id];
-  }
-});
-
-bot.on('photo', async (ctx) => {
-  const id = ctx.from.id.toString();
-  if (ctx.chat.id.toString() === ADMIN_ID && ctx.message.reply_to_message) {
-    const originalMessage = ctx.message.reply_to_message.text;
-    const match = originalMessage.match(/Order ID: ([a-f0-9]+)/);
-    if (match) {
-      const orderId = match[1];
-      const customerId = qrPending[orderId];
-      if (customerId) {
-        const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-        await bot.telegram.sendPhoto(customerId, fileId, {
-          caption: 'Ito na po ang payment QR code. Please send back your proof of payment photo after completing the transaction.',
-        });
-        proofWaitList[customerId] = orderId;
-        delete qrPending[orderId];
-        await ctx.reply('QR sent to customer.');
+// Full product catalog with categories, products, variants and prices
+const catalog = {
+  "Cock Rings & Toys": {
+    "Cock Ring - Pack of 3": { price: 80 },
+    "Cock Ring Vibrator": { price: 60 },
+    "Spikey Jelly (Red)": { price: 160 },
+    "Spikey Jelly (Black)": { price: 160 },
+    "\"Th Bolitas\" Jelly": { price: 160 },
+    "Portable Wired Vibrator Egg": { price: 130 },
+    "Delay Collar": { price: 200 },
+    "Delay Ejaculation Buttplug": { price: 200 },
+    "7 Inches African Version Dildo": { price: 270 },
+    "Masturbator Cup": {
+      price: 120,
+      variants: {
+        "Yellow (Mouth)": 120,
+        "Gray (Arse)": 120,
+        "Black (Vagina)": 120
       }
     }
-  } else if (proofWaitList[id]) {
-    const orderId = proofWaitList[id];
-    const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-    const order = await Order.findById(orderId);
-    if (order) {
-      order.paymentProofFileId = fileId;
-      order.status = 'Payment Received';
-      await order.save();
-
-      await ctx.reply('Payment proof received! We will confirm and update you shortly.');
-      await bot.telegram.sendMessage(ADMIN_ID, `Proof of payment uploaded for order ID: ${orderId}`);
+  },
+  "Lubricants & Condoms": {
+    "Monogatari Lube Tube": { price: 120 },
+    "Monogatari Lube Pinhole": { price: 120 },
+    "Monogatari Flavored Lube": {
+      price: 200,
+      variants: {
+        "Peach": 200,
+        "Strawberry": 200,
+        "Cherry": 200
+      }
+    },
+    "Ultra thin 001 for men natural latex condom": {
+      price: 90,
+      variants: {
+        "Black": 90,
+        "Long Battle": 90,
+        "Blue": 90,
+        "Naked Pleasure": 90,
+        "Granule Passion": 90
+      }
     }
-    delete proofWaitList[id];
+  },
+  "Performance Enhancers": {
+    "Maxman per Tab": { price: 40 },
+    "Maxman per Pad": { price: 400 } // note discount handled manually if needed
+  },
+  "Essentials": {
+    "Eucalyptus Menthol Food Grade": {
+      variants: {
+        "15-20 (1k)": 1000,
+        "25-30 (1.5k)": 1500,
+        "35-40 (2k)": 2000
+      }
+    },
+    "Insulin Syringe": { price: 20 },
+    "Sterile Water for Injection": { price: 15 }
+  },
+  "Mouth Fresheners": {
+    "Mouth Fresheners": {
+      variants: {
+        "Peach": 90,
+        "Mint": 90
+      }
+    }
+  }
+};
+
+// Helper function to safely add item to user cart
+function addToCart(userId, name, price) {
+  if (!userCarts[userId]) userCarts[userId] = [];
+  userCarts[userId].push({ name, price });
+}
+
+// Start command
+bot.start(ctx => {
+  ctx.reply('Welcome sa Kutabare Online Shop! Type /menu para simulan ang landian.');
+});
+
+// Show categories menu
+bot.command('menu', async (ctx) => {
+  const categories = Object.keys(catalog);
+  const buttons = categories.map(cat => [{ text: cat, callback_data: `category_${cat}` }]);
+
+  try {
+    await ctx.reply('Pili ng category:', {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  } catch (err) {
+    console.error('Error sending menu:', err);
   }
 });
 
-bot.launch();
-app.get('/', (req, res) => res.send('Kutabare Bot is running!'));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// View cart command
+bot.command('cart', (ctx) => {
+  const userId = ctx.from.id;
+  const cart = userCarts[userId] || [];
+  if (cart.length === 0) {
+    return ctx.reply('Wala ka pang items sa cart mo. /menu para magshop.');
+  }
+
+  let message = 'Cart mo:\n\n';
+  let total = 0;
+  cart.forEach((item, i) => {
+    message += `${i + 1}. ${item.name} - ₱${item.price}\n`;
+    total += item.price;
+  });
+  message += `\nTotal: ₱${total}`;
+
+  const buttons = [
+    [{ text: 'Check Out', callback_data: 'checkout' }],
+    [{ text: 'Add More', callback_data: 'add_more' }]
+  ];
+
+  ctx.reply(message, { reply_markup: { inline_keyboard: buttons } });
+});
+
+// Callback query handler for category, product, variant, add to cart etc
+bot.on('callback_query', async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  const userId = ctx.from.id;
+
+  // Show products for a category
+  if (data.startsWith('category_')) {
+    const category = data.substring(9);
+    const products = Object.keys(catalog[category] || {});
+    if (products.length === 0) {
+      return ctx.answerCbQuery('Walang product sa category na ito.');
+    }
+    const buttons = products.map(p => [{ text: p, callback_data: `product_${category}_${p}` }]);
+    try {
+      await ctx.editMessageText(`Pili ng product sa ${category}:`, {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (err) {
+      if (!err.message.includes('message is not modified')) {
+        console.error(err);
+      }
+    }
+    return ctx.answerCbQuery();
+  }
+
+  // Show variants for a product or add to cart directly if no variants
+  if (data.startsWith('product_')) {
+    const [_, category, ...productParts] = data.split('_');
+    const productName = productParts.join('_');
+    const product = catalog[category]?.[productName];
+    if (!product) return ctx.answerCbQuery('Product not found.');
+
+    if (product.variants) {
+      // Show variants
+      const buttons = Object.keys(product.variants).map(variant => [{
+        text: variant,
+        callback_data: `variant_${category}_${productName}_${variant}`
+      }]);
+      try {
+        await ctx.editMessageText(`Pili ng variant para sa ${productName}:`, {
+          reply_markup: { inline_keyboard: buttons }
+        });
+      } catch (err) {
+        if (!err.message.includes('message is not modified')) {
+          console.error(err);
+        }
+      }
+    } else {
+      // No variants - add to cart directly
+      addToCart(userId, productName, product.price);
+      await ctx.answerCbQuery(`${productName} naidagdag sa cart mo!`);
+      await ctx.editMessageText(`Nagdagdag kami ng ${productName} sa cart mo! Type /cart para makita.`);
+    }
+    return ctx.answerCbQuery();
+  }
+
+  // Add variant product to cart
+  if (data.startsWith('variant_')) {
+    const [_, category, ...rest] = data.split('_');
+    const variant = rest.pop();
+    const productName = rest.join('_');
+    const product = catalog[category]?.[productName];
+    if (!product || !product.variants || !(variant in product.variants)) {
+      return ctx.answerCbQuery('Variant not found.');
+    }
+
+    const price = product.variants[variant];
+    const itemName = `${productName} - ${variant}`;
+    addToCart(userId, itemName, price);
+
+    await ctx.answerCbQuery(`${itemName} naidagdag sa cart mo!`);
+    await ctx.editMessageText(`Nagdagdag kami ng ${itemName} sa cart mo! Type /cart para makita.`);
+    return ctx.answerCbQuery();
+  }
+
+  // Handle cart buttons
+  if (data === 'checkout') {
+    // For simplicity, just reply
+    await ctx.answerCbQuery();
+    await ctx.reply('Thank you for checking out! I-process namin order mo soon.');
+    userCarts[userId] = []; // Clear cart after checkout
+  }
+
+  if (data === 'add_more') {
+    // Show categories again
+    const categories = Object.keys(catalog);
+    const buttons = categories.map(cat => [{ text: cat, callback_data: `category_${cat}` }]);
+    try {
+      await ctx.editMessageText('Pili ng category:', {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (err) {
+      if (!err.message.includes('message is not modified')) {
+        console.error(err);
+      }
+    }
+    await ctx.answerCbQuery();
+  }
+});
+
+// Start Express server
+app.get('/', (req, res) => {
+  res.send('Kutabare Telegram bot server is running.');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Launch the bot
+bot.launch().then(() => {
+  console.log('Bot started.');
+});
+
+// Graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
