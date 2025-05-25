@@ -298,7 +298,7 @@ app.post('/payment-webhook', async (req, res) => {
 });
 
 // Start Express server for webhook handling
-app.listen(process.env.PORT || 3000, () => {
+app.listen(process.env.PORT || 3001, () => {
   console.log('Express server running, Telegram bot webhook ready');
 });
 
