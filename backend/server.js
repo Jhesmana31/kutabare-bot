@@ -1,22 +1,43 @@
 require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
+const mongoose = require('mongoose');
 const { categories, products } = require('./data/products');
 const cart = require('./utils/cart');
 
 const app = express();
 app.use(express.json());
 
-// Initialize bot without polling
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true 
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// Define order schema and model
+const orderSchema = new mongoose.Schema({
+  chatId: Number,
+  name: String,
+  phone: String,
+  delivery: String,
+  address: String,
+  cart: Array,
+  paymentProofFileId: String,
+  status: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const Order = mongoose.model('Order', orderSchema);
+
+// Store payment QR file_id in DB (only one, updateable)
+const qrSchema = new mongoose.Schema({
+  fileId: String,
+});
+const PaymentQR = mongoose.model('PaymentQR', qrSchema);
+
 const bot = new TelegramBot(process.env.BOT_TOKEN);
 bot.setWebHook(`${process.env.BASE_URL}/bot${process.env.BOT_TOKEN}`);
 
-// Simple in-memory orders store (replace with DB in production)
-const orders = {};
-// Store payment QR file_id per chat (upload QR on your admin dashboard and save here)
-let paymentQRFileId = null;
-
-// Encode/decode callback_data with Base64-safe format
 function encodeData(type, category = '', product = '', variant = '') {
   return `cb_${type}_${Buffer.from(category).toString('base64')}_${Buffer.from(product).toString('base64')}_${variant ? Buffer.from(variant).toString('base64') : ''}`;
 }
@@ -30,12 +51,9 @@ function decodeData(data) {
   };
 }
 
-// Utility: generate buttons for categories
 function getCategoryButtons() {
   return categories.map(cat => [{ text: cat, callback_data: encodeData('category', cat) }]);
 }
-
-// Utility: generate buttons for products in a category
 function getProductButtons(category) {
   const categoryProducts = products[category];
   if (!categoryProducts) return [];
@@ -44,8 +62,6 @@ function getProductButtons(category) {
     callback_data: encodeData('product', category, p)
   }]);
 }
-
-// Utility: generate variant buttons
 function getVariantButtons(category, product) {
   const productData = products[category][product];
   if (typeof productData !== 'object') return [];
@@ -55,7 +71,6 @@ function getVariantButtons(category, product) {
   }]);
 }
 
-// Start command - show categories
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const buttons = getCategoryButtons();
@@ -65,7 +80,6 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// Callback query handler
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
@@ -88,7 +102,6 @@ bot.on('callback_query', async (query) => {
   }
 
   if (data.startsWith('cb_delete_')) {
-    // Delete item from cart
     const index = parseInt(data.split('_')[2], 10);
     cart.remove(chatId, index);
     return showCart(chatId);
@@ -111,7 +124,6 @@ bot.on('callback_query', async (query) => {
     const productData = products[category][product];
 
     if (typeof productData === 'object' && !productData.label) {
-      // Show variants
       const buttons = getVariantButtons(category, product);
       buttons.push([{ text: 'Back to Categories', callback_data: 'cb_back_main' }]);
       buttons.push([{ text: 'View Cart', callback_data: 'cb_view_cart' }]);
@@ -121,7 +133,6 @@ bot.on('callback_query', async (query) => {
         reply_markup: { inline_keyboard: buttons }
       });
     } else {
-      // No variants, add directly
       cart.add(chatId, { category, product, price: productData.price, label: productData.label });
       return bot.sendMessage(chatId, `✅ Added *${productData.label}* to your cart.`, {
         parse_mode: 'Markdown',
@@ -153,7 +164,6 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Show cart function
 async function showCart(chatId) {
   const items = cart.get(chatId);
 
@@ -173,7 +183,6 @@ async function showCart(chatId) {
 
   message += `\n*Total:* Php ${total}`;
 
-  // Build buttons: delete buttons for each item, plus checkout & add more
   const buttons = items.map((item, i) => ([{ text: `Delete ${i + 1}`, callback_data: `cb_delete_${i}` }]));
   buttons.push([{ text: 'Add More', callback_data: 'cb_back_main' }]);
   buttons.push([{ text: 'Check Out', callback_data: 'cb_checkout' }]);
@@ -184,10 +193,8 @@ async function showCart(chatId) {
   });
 }
 
-// Checkout flow state management
-const checkoutStates = {}; // chatId => state object
+const checkoutStates = {};
 
-// Start checkout: ask for delivery method
 async function startCheckout(chatId) {
   const items = cart.get(chatId);
   if (!items.length) {
@@ -208,31 +215,28 @@ async function startCheckout(chatId) {
   });
 }
 
-// Handle delivery option and next steps
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
-  // Ignore if not in checkout flow or unknown data
-  if (!checkoutStates[chatId]) return;
+  if (checkoutStates[chatId]) {
+    const state = checkoutStates[chatId];
 
-  const state = checkoutStates[chatId];
-
-  if (state.step === 'delivery') {
-    if (data === 'delivery_pickup' || data === 'delivery_delivery') {
-      state.delivery = data === 'delivery_pickup' ? 'Pick Up' : 'Same-day Delivery';
-      state.step = 'collect_name';
-      return bot.sendMessage(chatId, 'Please enter your full name:');
+    if (state.step === 'delivery') {
+      if (data === 'delivery_pickup' || data === 'delivery_delivery') {
+        state.delivery = data === 'delivery_pickup' ? 'Pick Up' : 'Same-day Delivery';
+        state.step = 'collect_name';
+        return bot.sendMessage(chatId, 'Please enter your full name:');
+      }
     }
   }
 });
 
-// Listen for messages (to collect user info in checkout)
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const state = checkoutStates[chatId];
 
-  if (!state) return; // not in checkout flow
+  if (!state) return;
 
   if (state.step === 'collect_name') {
     state.name = msg.text.trim();
@@ -259,19 +263,24 @@ bot.on('message', async (msg) => {
   }
 
   if (state.step === 'awaiting_proof') {
-    // Wait for photo upload proof of payment
     if (msg.photo && msg.photo.length) {
       const fileId = msg.photo[msg.photo.length - 1].file_id;
       state.paymentProof = fileId;
       state.step = 'completed';
 
-      // Save order info to orders store
-      orders[chatId] = {
-        ...state,
+      // Save order to DB
+      const newOrder = new Order({
+        chatId,
+        name: state.name,
+        phone: state.phone,
+        delivery: state.delivery,
+        address: state.address,
         cart: cart.get(chatId),
+        paymentProofFileId: fileId,
         status: 'Payment Received'
-      };
+      });
 
+      await newOrder.save();
       cart.clear(chatId);
 
       await bot.sendMessage(chatId, '✅ Proof of payment received! Your order is confirmed and being processed.');
@@ -285,45 +294,31 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Confirm order summary and send payment QR
 async function confirmOrder(chatId) {
   const state = checkoutStates[chatId];
   const items = cart.get(chatId);
-
-  let message = '*Order Summary:*\n';
-  let total = 0;
-  items.forEach((item, i) => {
-    message += `${i + 1}. ${item.label || item.product}${item.variant ? ` (${item.variant})` : ''} - Php ${item.price}\n`;
-    total += item.price;
-  });
-
-  message += `\n*Total:* Php ${total}\n\n`;
-  message += `*Name:* ${state.name}\n*Phone:* ${state.phone}\n*Delivery:* ${state.delivery}`;
-  if (state.address) message += `\n*Address:* ${state.address}`;
-
-  await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-
-  if (!paymentQRFileId) {
-    await bot.sendMessage(chatId, 'Sorry, payment QR is not available yet. Please wait for admin to upload it.');
-    return;
-  }
-
-  await bot.sendPhoto(chatId, paymentQRFileId, {
-    caption: 'Please scan this QR code to pay your order. After payment, upload your proof of payment as a photo here.'
-  });
-
-  state.step = 'awaiting_proof';
-
-  await bot.sendMessage(chatId, 'Upload your proof of payment as a photo here.');
+return;
+} else {
+  return bot.sendMessage(chatId, 'Please send a photo as proof of payment.');
 }
 
-// Webhook to receive Telegram updates
-app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
+} });
 
-// Endpoint for admin to upload payment QR file_id (POST with JSON { file_id: '' })
-app.post('/upload-qr', (req, res) => {
-  const { file_id } = req.body;
-  if (!file_id) return res.status(400).send({
+async function confirmOrder(chatId) { const state = checkoutStates[chatId]; const items = cart.get(chatId); let total = 0; let summary = 'Order Summary: '; items.forEach((item, i) => { summary += ${i + 1}. ${item.label || item.product}${item.variant ?  (${item.variant}): ''} - Php ${item.price}; total += item.price; }); summary += \n*Total:* Php ${total};
+
+const qr = await PaymentQR.findOne();
+
+if (qr && qr.fileId) { await bot.sendPhoto(chatId, qr.fileId, { caption: summary + '\n\nPlease send a screenshot/photo of your payment to confirm your order.', parse_mode: 'Markdown' }); } else { await bot.sendMessage(chatId, summary + '\n\nNo QR code found. Please contact the admin.'); }
+
+state.step = 'awaiting_proof'; }
+
+// Handle QR upload by Admin bot.onText(//upload_qr/, async (msg) => { if (msg.chat.id.toString() !== process.env.ADMIN_CHAT_ID) return; await bot.sendMessage(msg.chat.id, 'Please send the QR code image you want to set as payment QR.'); checkoutStates[msg.chat.id] = { step: 'awaiting_qr_upload' }; });
+
+bot.on('photo', async (msg) => { const chatId = msg.chat.id; const state = checkoutStates[chatId];
+
+if (state && state.step === 'awaiting_qr_upload') { const fileId = msg.photo[msg.photo.length - 1].file_id; await PaymentQR.deleteMany({}); await new PaymentQR({ fileId }).save(); delete checkoutStates[chatId]; return bot.sendMessage(chatId, '✅ New payment QR code uploaded and saved.'); } });
+
+// Express route for webhook app.post(/bot${process.env.BOT_TOKEN}, (req, res) => { bot.processUpdate(req.body); res.sendStatus(200); });
+
+const PORT = process.env.PORT || 3000; app.listen(PORT, () => { console.log(Server running on port ${PORT}); });
+
