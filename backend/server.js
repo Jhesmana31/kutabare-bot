@@ -25,13 +25,25 @@ const categories = {
     { name: '"Th Bolitas" Jelly', price: 160 },
     { name: 'Portable Wired Vibrator Egg', price: 130 },
     { name: '7 Inches African Version Dildo', price: 270 },
-    { name: 'Masturbator Cup', price: 120, variants: ['Yellow (Mouth)', 'Gray (Arse)', 'Black (Vagina)'] },
+    {
+      name: 'Masturbator Cup',
+      price: 120,
+      variants: ['Yellow (Mouth)', 'Gray (Arse)', 'Black (Vagina)'],
+    },
   ],
   'Lubes & Condoms': [
     { name: 'Monogatari Lube Tube', price: 120 },
     { name: 'Monogatari Lube Pinhole', price: 120 },
-    { name: 'Monogatari Flavored Lube', price: 200, variants: ['Peach', 'Strawberry', 'Cherry'] },
-    { name: 'Ultra thin 001 Condom', price: 90, variants: ['Black', 'Long Battle', 'Blue', 'Naked Pleasure', 'Granule Passion'] },
+    {
+      name: 'Monogatari Flavored Lube',
+      price: 200,
+      variants: ['Peach', 'Strawberry', 'Cherry'],
+    },
+    {
+      name: 'Ultra thin 001 Condom',
+      price: 90,
+      variants: ['Black', 'Long Battle', 'Blue', 'Naked Pleasure', 'Granule Passion'],
+    },
   ],
   'Performance Enhancers': [
     { name: 'Maxman per Tab', price: 40 },
@@ -42,8 +54,16 @@ const categories = {
     { name: 'Delay Ejaculation Buttplug', price: 200 },
   ],
   'Essentials': [
-    { name: 'Eucalyptus Menthol Food Grade', price: 0, variants: ['15-20 (1k)', '25-30 (1.5k)', '35-40 (2k)'] },
-    { name: 'Mouth Fresheners', price: 90, variants: ['Peach', 'Mint'] },
+    {
+      name: 'Eucalyptus Menthol Food Grade',
+      price: 0,
+      variants: ['15-20 (1k)', '25-30 (1.5k)', '35-40 (2k)'],
+    },
+    {
+      name: 'Mouth Fresheners',
+      price: 90,
+      variants: ['Peach', 'Mint'],
+    },
     { name: 'Insulin Syringe', price: 20 },
     { name: 'Sterile Water for Injection', price: 15 },
   ],
@@ -63,9 +83,7 @@ bot.start(async (ctx) => {
 });
 
 function categoryInlineButtons() {
-  // One button per row, with category name
   const buttons = Object.keys(categories).map(cat => [Markup.button.callback(cat, `category_${cat}`)]);
-  // Add View Cart and Checkout buttons
   buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
   buttons.push([Markup.button.callback('✅ Checkout', 'checkout')]);
   return Markup.inlineKeyboard(buttons);
@@ -106,6 +124,7 @@ bot.action(/category_(.+)/, async (ctx) => {
   const id = ctx.from.id.toString();
   userStates[id] = `PRODUCT_SELECTION:${category}`;
   await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineButtons(category));
+  await ctx.answerCbQuery();
 });
 
 bot.action(/product_(.+)_(.+)/, async (ctx) => {
@@ -133,9 +152,7 @@ bot.action(/variant_(.+)_(.+)_(.+)/, async (ctx) => {
   const id = ctx.from.id.toString();
 
   const product = categories[category].find(p => p.name === productName);
-  if (!product || !product.variants.includes(variant)) {
-    return ctx.answerCbQuery('Invalid variant.');
-  }
+  if (!product || !product.variants.includes(variant)) return ctx.answerCbQuery('Invalid variant.');
 
   userCarts[id].push({ name: `${productName} - ${variant}`, price: product.price });
   userStates[id] = 'CATEGORY_SELECTION';
@@ -161,7 +178,7 @@ bot.action(/back_to_products_(.+)/, async (ctx) => {
 bot.action('view_cart', async (ctx) => {
   const id = ctx.from.id.toString();
   const summary = cartSummary(id);
-  await ctx.answerCbQuery(); // remove loading
+  await ctx.answerCbQuery();
   await ctx.reply(summary);
 });
 
@@ -189,7 +206,6 @@ bot.action(/delivery_(.+)/, async (ctx) => {
   await ctx.answerCbQuery();
 });
 
-// Handle plain text for contact number and proof photo, etc.
 bot.on('text', async (ctx) => {
   const id = ctx.from.id.toString();
   const state = userStates[id] || 'CATEGORY_SELECTION';
@@ -220,10 +236,7 @@ bot.on('text', async (ctx) => {
     await ctx.reply(`Order placed! Total: ₱${total}\nWait for the QR code for payment.`);
 
     await bot.telegram.sendMessage(ADMIN_ID,
-      `New order received from @${ctx.from.username || ctx.from.first_name}:\n\n` +
-      `${lines}\n\n` +
-      `Delivery: ${deliveryOption}\nContact: ${phone}\nTotal: ₱${total}\n\n` +
-      `Order ID: ${newOrder._id}`
+      `New order received from @${ctx.from.username || ctx.from.first_name}:\n\n${lines}\n\nDelivery: ${deliveryOption}\nContact: ${phone}\nTotal: ₱${total}\n\nOrder ID: ${newOrder._id}`
     );
 
     qrPending[newOrder._id] = id;
@@ -234,7 +247,6 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Admin uploads QR code, sends to customer
 bot.on('photo', async (ctx) => {
   const id = ctx.from.id.toString();
   if (ctx.chat.id.toString() === ADMIN_ID && ctx.message.reply_to_message) {
@@ -254,7 +266,6 @@ bot.on('photo', async (ctx) => {
       }
     }
   } else if (proofWaitList[id]) {
-    // Customer sends proof of payment photo
     const orderId = proofWaitList[id];
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
     const order = await Order.findById(orderId);
@@ -270,31 +281,7 @@ bot.on('photo', async (ctx) => {
   }
 });
 
-app.get('/orders', async (req, res) => {
-  const orders = await Order.find().sort({ createdAt: -1 });
-  res.json(orders);
-});
-
-app.post('/orders/:id/status', async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  const order = await Order.findByIdAndUpdate(id, { status }, { new: true });
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-
-  try {
-    await bot.telegram.sendMessage(order.telegramId, `Order update:\nYour order status is now *${status}*.`, {
-      parse_mode: 'Markdown',
-    });
-  } catch (err) {
-    console.error('Failed to send Telegram message to customer:', err.message);
-  }
-
-  res.json(order);
-});
-
 bot.launch();
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.get('/', (req, res) => res.send('Kutabare Bot is running!'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
