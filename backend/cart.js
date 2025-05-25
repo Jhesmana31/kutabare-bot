@@ -2,7 +2,6 @@ const { getCartsCollection } = require('./db');
 
 async function add(chatId, item) {
   const collection = await getCartsCollection();
-  // Add item to user's cart array
   await collection.updateOne(
     { chatId },
     { $push: { items: item } },
