@@ -25,104 +25,127 @@ mongoose.connect(process.env.MONGO_URI, {
   useUnifiedTopology: true,
 });
 
-// BOT COMMANDS
+// Categories and sample products map (keys for callback data)
+const categories = [
+  { key: 'CockRings', label: 'Cock Rings & Toys' },
+  { key: 'Lubes', label: 'Lubes & Condoms' },
+  { key: 'Performance', label: 'Performance Enhancers' },
+  { key: 'Spicy', label: 'Spicy Accessories' },
+  { key: 'Essentials', label: 'Essentials' },
+];
 
+const sampleProducts = {
+  CockRings: ['Cock Ring - ₱80', 'Cock Ring Vibrator - ₱60'],
+  Lubes: ['Monogatari Lube - ₱120', '001 Condom - ₱90'],
+  Performance: ['Maxman Tab - ₱40'],
+  Spicy: ['Delay Plug - ₱200'],
+  Essentials: ['Insulin Syringe - ₱20'],
+};
+
+// /start command
 bot.start(ctx => {
   ctx.reply('Welcome to Kutabare Online Shop! Type /order to start shopping.');
 });
 
-bot.command('order', ctx => {
-  const id = ctx.chat.id;
-  userCarts[id] = {};
-  userStates[id] = 'selecting_category';
-  ctx.reply('Please choose a category:', {
-    reply_markup: {
-      keyboard: [
-        ['Cock Rings & Toys', 'Lubes & Condoms'],
-        ['Performance Enhancers', 'Spicy Accessories'],
-        ['Essentials'],
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: true,
-    },
+// /order command - show categories inline keyboard
+bot.command('order', async ctx => {
+  userCarts[ctx.from.id] = {};
+  userStates[ctx.from.id] = 'selecting_category';
+
+  const buttons = categories.map(cat => [{ text: cat.label, callback_data: `category_${cat.key}` }]);
+
+  await ctx.reply('Please choose a category:', {
+    reply_markup: { inline_keyboard: buttons }
   });
 });
 
-bot.hears(['Cock Rings & Toys', 'Lubes & Condoms', 'Performance Enhancers', 'Spicy Accessories', 'Essentials'], ctx => {
-  const id = ctx.chat.id;
-  userStates[id] = 'selecting_product';
-  userOrderData[id] = userOrderData[id] || {};
-  userOrderData[id].category = ctx.message.text;
+// Handle callback queries for categories, products, checkout, back
+bot.on('callback_query', async ctx => {
+  const data = ctx.callbackQuery.data;
+  const id = ctx.from.id;
 
-  // Normally you'd fetch from DB based on category
-  const sampleProducts = {
-    'Cock Rings & Toys': ['Cock Ring - ₱80', 'Cock Ring Vibrator - ₱60'],
-    'Lubes & Condoms': ['Monogatari Lube - ₱120', '001 Condom - ₱90'],
-    'Performance Enhancers': ['Maxman Tab - ₱40'],
-    'Spicy Accessories': ['Delay Plug - ₱200'],
-    'Essentials': ['Insulin Syringe - ₱20'],
-  };
+  // Select category
+  if (data.startsWith('category_')) {
+    const categoryKey = data.split('category_')[1];
+    userStates[id] = 'selecting_product';
+    userOrderData[id] = userOrderData[id] || {};
+    userOrderData[id].category = categoryKey;
 
-  const items = sampleProducts[ctx.message.text] || [];
-  const buttons = items.map(item => [item]);
-  buttons.push(['Back to Categories', 'Checkout']);
+    const items = sampleProducts[categoryKey] || [];
+    const buttons = items.map(item => [{ text: item, callback_data: `product_${item}` }]);
+    buttons.push([{ text: 'Back to Categories', callback_data: 'back_to_categories' }]);
+    buttons.push([{ text: 'Checkout', callback_data: 'checkout' }]);
 
-  ctx.reply('Select a product:', {
-    reply_markup: {
-      keyboard: buttons,
-      resize_keyboard: true,
-    },
-  });
-});
+    await ctx.editMessageText('Select a product:', {
+      reply_markup: { inline_keyboard: buttons }
+    });
+    await ctx.answerCbQuery();
+    return;
+  }
 
-bot.hears('Back to Categories', ctx => {
-  userStates[ctx.chat.id] = 'selecting_category';
-  ctx.reply('Choose another category:', {
-    reply_markup: {
-      keyboard: [
-        ['Cock Rings & Toys', 'Lubes & Condoms'],
-        ['Performance Enhancers', 'Spicy Accessories'],
-        ['Essentials'],
-      ],
-      resize_keyboard: true,
-    },
-  });
-});
+  // Back to categories
+  if (data === 'back_to_categories') {
+    userStates[id] = 'selecting_category';
 
-bot.hears('Checkout', async ctx => {
-  const id = ctx.chat.id;
-  const cart = userCarts[id] || {};
-  const items = Object.entries(cart);
-  if (!items.length) return ctx.reply('Cart is empty. Add products first.');
+    const buttons = categories.map(cat => [{ text: cat.label, callback_data: `category_${cat.key}` }]);
 
-  const lines = items.map(([name, qty]) => `${qty}x ${name}`).join('\n');
-  ctx.reply(`Items:\n${lines}\n\nSend your delivery option:\n- Pick up\n- Same-day delivery`);
-  userStates[id] = 'collecting_delivery';
-});
+    await ctx.editMessageText('Choose another category:', {
+      reply_markup: { inline_keyboard: buttons }
+    });
+    await ctx.answerCbQuery();
+    return;
+  }
 
-bot.on('text', async ctx => {
-  const id = ctx.chat.id;
-  const state = userStates[id];
-  const text = ctx.message.text;
-
-  if (state === 'selecting_product') {
-    if (text === 'Checkout' || text === 'Back to Categories') return;
-
-    const name = text.split(' - ')[0];
+  // Add product to cart
+  if (data.startsWith('product_')) {
+    const product = data.split('product_')[1];
     userCarts[id] = userCarts[id] || {};
-    userCarts[id][name] = (userCarts[id][name] || 0) + 1;
-
-    return ctx.reply(`${name} added! Type more or press Checkout.`);
+    userCarts[id][product] = (userCarts[id][product] || 0) + 1;
+    await ctx.answerCbQuery(`${product} added to cart!`);
+    return;
   }
 
-  if (state === 'collecting_delivery') {
-    userOrderData[id].deliveryOption = text;
+  // Checkout pressed - ask delivery option
+  if (data === 'checkout') {
+    const cart = userCarts[id] || {};
+    if (Object.keys(cart).length === 0) {
+      await ctx.answerCbQuery('Cart is empty! Add products first.');
+      return;
+    }
+
+    userStates[id] = 'collecting_delivery';
+
+    // Delivery options as inline buttons
+    await ctx.editMessageText('Select delivery option:', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Pick up', callback_data: 'delivery_pickup' }],
+          [{ text: 'Same-day delivery', callback_data: 'delivery_sameday' }],
+          [{ text: 'Back to Categories', callback_data: 'back_to_categories' }],
+        ]
+      }
+    });
+    await ctx.answerCbQuery();
+    return;
+  }
+
+  // Handle delivery option
+  if (data.startsWith('delivery_') && userStates[id] === 'collecting_delivery') {
+    const deliveryOption = data.split('delivery_')[1];
+    userOrderData[id].deliveryOption = deliveryOption;
     userStates[id] = 'collecting_contact';
-    return ctx.reply('Send your contact number:');
-  }
 
-  if (state === 'collecting_contact') {
-    userOrderData[id].contact = text;
+    await ctx.editMessageText('Please send your contact number:');
+    await ctx.answerCbQuery();
+    return;
+  }
+});
+
+// Handle contact number sent as normal text when state = collecting_contact
+bot.on('text', async ctx => {
+  const id = ctx.from.id;
+  if (userStates[id] === 'collecting_contact') {
+    userOrderData[id].contact = ctx.message.text;
 
     const cart = userCarts[id] || {};
     const orderData = {
@@ -132,9 +155,18 @@ bot.on('text', async ctx => {
       deliveryOption: userOrderData[id].deliveryOption,
     };
 
-    const total = Object.values(cart).reduce((acc, qty, i) => acc + qty * 100, 0);
+    // Calculate total (replace with your real prices)
+    let total = 0;
+    for (const [name, qty] of Object.entries(cart)) {
+      // Extract price from name string, e.g. "Cock Ring - ₱80"
+      const priceMatch = name.match(/₱(\d+)/);
+      const price = priceMatch ? parseInt(priceMatch[1]) : 0;
+      total += price * qty;
+    }
+
     const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
 
+    // Save order in DB
     const newOrder = new Order(orderData);
     await newOrder.save();
 
@@ -143,6 +175,7 @@ bot.on('text', async ctx => {
       `Hintayin ang QR code for payment. Salamat boss!`
     );
 
+    // Notify admin to upload QR code
     await bot.telegram.sendMessage(ADMIN_ID,
       `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${orderData.contact}\nDelivery: ${orderData.deliveryOption}\n\n` +
       `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
@@ -155,10 +188,12 @@ bot.on('text', async ctx => {
   }
 });
 
+// Handle photos for QR and proof as before (no change needed)
+
 bot.on('photo', async ctx => {
   const id = ctx.chat.id;
 
-  // ADMIN uploads QR
+  // ADMIN uploads QR code with caption "QR:<orderId>"
   if (id == ADMIN_ID && ctx.message.caption?.startsWith('QR:')) {
     const orderId = ctx.message.caption.split('QR:')[1].trim();
     const order = await Order.findById(orderId);
@@ -191,8 +226,8 @@ bot.on('photo', async ctx => {
   }
 });
 
-// START BOT
 bot.launch();
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('Server running');
 });
