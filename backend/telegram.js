@@ -255,7 +255,6 @@ bot.on('message', (msg) => {
 });
 
 // --- PAYMENT STATUS UPDATE WEBHOOK ---
-// Your payment backend should POST here when payment proof is received
 app.post('/payment-webhook', async (req, res) => {
   try {
     const { orderId, paymentStatus } = req.body;
@@ -274,33 +273,18 @@ app.post('/payment-webhook', async (req, res) => {
     // Notify customer about payment status update
     let statusText = '';
     if (paymentStatus === 'paid') {
-      statusText = `Boss, nareceive ko na yung proof of payment mo for order *#${orderId}*. Salamat! Iprocess ko na agad ang order mo.`;
-    } else if (paymentStatus === 'pending') {
-      statusText = `Boss, pending pa yung payment mo for order *#${orderId}*. Hintayin lang natin ha.`;
+      statusText = `Boss, nareceive ko na yung bayad mo for Order *#${orderId}*. Paantay lang habang pinoproseso namin.`;
     } else if (paymentStatus === 'failed') {
-      statusText = `Boss, sorry pero hindi valid yung payment proof mo for order *#${orderId}*. Pakicheck ulit please.`;
+      statusText = `Boss, mukhang may problema sa bayad mo for Order *#${orderId}*. Paki-double check ang QR or payment link.`;
     } else {
-      statusText = `Update on order *#${orderId}*: status changed to ${paymentStatus}.`;
+      statusText = `Update sa Order *#${orderId}*: Status - *${paymentStatus}*.`;
     }
 
     await bot.sendMessage(order.telegramId, statusText, { parse_mode: 'Markdown' });
 
-    // Optionally notify admin
-    await bot.sendMessage(adminId,
-      `Order #${orderId} payment status updated to *${paymentStatus}* for Telegram user ${order.telegramId}.`
-    );
-
-    return res.status(200).send('OK');
-  } catch (error) {
-    console.error('Payment webhook error:', error.message);
-    return res.status(500).send('Internal server error');
+    return res.status(200).send('Notification sent');
+  } catch (err) {
+    console.error('Payment webhook error:', err.message);
+    return res.status(500).send('Server error');
   }
 });
-
-// Start Express server for webhook handling
-app.listen(process.env.PORT || 3001, () => {
-  console.log('Express server running, Telegram bot webhook ready');
-});
-
-// Export bot for external use if needed
-module.exports = bot;
