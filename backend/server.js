@@ -2,13 +2,40 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const { Telegraf } = require('telegraf');
 const { getCategories, getProductList } = require('./data/products');
-
-const ordersRouter = require('./routes/orders');  // <-- added import here
+const ordersRouter = require('./routes/orders');
 
 const app = express();
 app.use(bodyParser.json());
+
+// MongoDB connection
+const MONGO_URI = process.env.MONGO_URI;
+mongoose.connect(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
+
+// Order model
+const OrderSchema = new mongoose.Schema({
+  telegramId: Number,
+  items: [{
+    name: String,
+    variant: String,
+    quantity: Number
+  }],
+  contact: String,
+  deliveryOption: String,
+  total: Number,
+  createdAt: { type: Date, default: Date.now },
+});
+const Order = mongoose.model('Order', OrderSchema);
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BACKEND_URL = process.env.BACKEND_URL;
@@ -19,16 +46,19 @@ const bot = new Telegraf(BOT_TOKEN);
 app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
 bot.telegram.setWebhook(WEBHOOK_URL);
 
-// In-memory stores
-const userStates = {}, userCarts = {}, userOrderData = {};
+// In-memory user data stores
+const userStates = {};
+const userCarts = {};
+const userOrderData = {};
 
-// Get product price
+// Helpers
 function findProductPrice(name) {
   const all = getCategories().flatMap(getProductList);
   const item = all.find(p => p.name === name);
   return item?.price || 0;
 }
 
+// Bot handlers
 bot.start(ctx => {
   const id = ctx.chat.id;
   userStates[id] = null;
@@ -50,9 +80,7 @@ bot.on('callback_query', async ctx => {
   if (data === 'view_products') {
     const buttons = getCategories().map(c => [{ text: c, callback_data: `cat_${c}` }]);
     return ctx.editMessageText('Pili ka ng category:', {
-      reply_markup: {
-        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]]
-      }
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]] }
     });
   }
 
@@ -65,9 +93,7 @@ bot.on('callback_query', async ctx => {
     }]);
     return ctx.editMessageText(`🧃 *${cat}*`, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]]
-      }
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
     });
   }
 
@@ -76,14 +102,10 @@ bot.on('callback_query', async ctx => {
     const all = getCategories().flatMap(getProductList);
     const prod = all.find(p => p.name === name);
     const price = prod?.price || 0;
-    const buttons = prod.variants.map(v => [{
-      text: `${v} - ₱${price}`, callback_data: `add_${name}_${v}`
-    }]);
+    const buttons = prod.variants.map(v => [{ text: `${v} - ₱${price}`, callback_data: `add_${name}_${v}` }]);
     return ctx.editMessageText(`Pili ng variant for *${name}*`, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]]
-      }
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
     });
   }
 
@@ -103,8 +125,9 @@ bot.on('callback_query', async ctx => {
   }
 
   if (data === 'checkout') {
-    if (!userCarts[id] || Object.keys(userCarts[id]).length === 0)
+    if (!userCarts[id] || Object.keys(userCarts[id]).length === 0) {
       return ctx.answerCbQuery('Empty cart.');
+    }
     userStates[id] = 'awaiting_delivery_option';
     return ctx.editMessageText('Pili ng delivery method:', {
       reply_markup: {
@@ -140,11 +163,11 @@ bot.on('callback_query', async ctx => {
 
 bot.on('message', async ctx => {
   const id = ctx.chat.id;
-  
-  if (userStates[id] !== 'awaiting_contact') return;  // Only handle when expecting contact info
-  
-  userOrderData[id].contact = ctx.message.text;  // Save user contact info
-  
+
+  if (userStates[id] !== 'awaiting_contact') return; // only handle contact info here
+
+  userOrderData[id].contact = ctx.message.text;
+
   const cart = userCarts[id];
   if (!cart || Object.keys(cart).length === 0) {
     await ctx.reply('Your cart is empty. Please add products first.');
@@ -152,21 +175,18 @@ bot.on('message', async ctx => {
     return;
   }
 
-  // Create a readable order summary
   const lines = Object.entries(cart).map(([key, qty]) => {
     const [name, variant] = key.split('_');
     const price = findProductPrice(name);
     return `${name} (${variant}) x${qty} - ₱${qty * price}`;
   }).join('\n');
 
-  // Calculate total price
   const total = Object.entries(cart).reduce((sum, [key, qty]) => {
     const [name] = key.split('_');
     return sum + qty * findProductPrice(name);
   }, 0);
 
-  // Build order object to match your API
-  const orderPayload = {
+  const orderData = {
     telegramId: id,
     items: Object.entries(cart).map(([key, qty]) => {
       const [name, variant] = key.split('_');
@@ -178,33 +198,39 @@ bot.on('message', async ctx => {
   };
 
   try {
-    await axios.post(`${BACKEND_URL}/api/orders`, orderPayload);
+    // Save order to MongoDB
+    const newOrder = new Order(orderData);
+    await newOrder.save();
 
+    // Notify user
     await ctx.replyWithMarkdown(
       `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
       `Hintayin ang QR code for payment. Salamat boss!`
     );
 
+    // Notify admin
     await bot.telegram.sendMessage(ADMIN_ID,
-      `New order:\nTotal: ₱${total}\nContact: ${orderPayload.contact}\nDelivery: ${orderPayload.deliveryOption}`
+      `New order:\nTotal: ₱${total}\nContact: ${orderData.contact}\nDelivery: ${orderData.deliveryOption}`
     );
 
-    // Clear user cart and state
+    // Reset user session data
     userCarts[id] = {};
     userOrderData[id] = {};
     userStates[id] = null;
 
   } catch (error) {
-    console.error('Order error:', error.message);
+    console.error('Error saving order:', error);
     await ctx.reply('Order failed. Try again.');
   }
 });
-// Attach the orders routes
-app.use('/api/orders', ordersRouter);  // <-- added this
 
-// Final server start
+// Use orders router
+app.use('/api/orders', ordersRouter);
+
+// Start server
 const PORT = process.env.PORT;
-if (!PORT) throw new Error("PORT is not defined. This is required by Render.");
+if (!PORT) throw new Error('PORT is not defined');
+
 app.listen(PORT, () => {
   console.log(`Kutabare backend live on ${PORT}`);
 });
