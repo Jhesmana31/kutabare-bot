@@ -74,6 +74,7 @@ function Dashboard() {
                       <Chip key={i} label={`${item.name} (${item.variant}) x${item.quantity || 1}`} sx={{ m: 0.5 }} />
                     ))}
                   </Box>
+
                   <Box mt={2} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <Chip label={`Status: ${order.status || 'Received'}`} />
                     <Button
@@ -99,6 +100,17 @@ function Dashboard() {
                       style={{ display: 'none' }}
                     />
                   </Box>
+
+                  {order.qrCodeImage && (
+                    <Box mt={2}>
+                      <Typography variant="body2" sx={{ color: '#aaa' }}>Uploaded QR:</Typography>
+                      <img
+                        src={order.qrCodeImage}
+                        alt="QR Code"
+                        style={{ width: 150, borderRadius: 8, marginTop: 4 }}
+                      />
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
