@@ -1,171 +1,184 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const multer = require('multer');
-const path = require('path');
+const bodyParser = require('body-parser');
+const axios = require('axios');
+const { Telegraf } = require('telegraf');
+const { getCategories, getProductList } = require('./data/products');
+
 const app = express();
-const PORT = process.env.PORT || 3001;
+app.use(bodyParser.json());
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const BACKEND_URL = process.env.BACKEND_URL;
+const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${BOT_TOKEN}`;
+const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.error('MongoDB error:', err));
+const bot = new Telegraf(BOT_TOKEN);
+app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
+bot.telegram.setWebhook(WEBHOOK_URL);
 
-// Multer
-const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
-});
-const upload = multer({ storage });
+// In-memory store
+const userStates = {}, userCarts = {}, userOrderData = {};
 
-// Models & Telegram
-const Order = require('./models/Order');
-const bot = require('./telegram'); // exports TelegramBot instance
-const ADMIN_CHAT_ID = 7721709933;
+function findProductPrice(name) {
+  const all = getCategories().flatMap(getProductList);
+  const item = all.find(p => p.name === name);
+  return item?.price || 0;
+}
 
-// Set webhook
-const webhookPath = `/bot${process.env.BOT_TOKEN}`;
-bot.setWebHook(`${process.env.BACKEND_URL}${webhookPath}`);
-
-// Receive Telegram webhook
-app.post(webhookPath, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// Routes
-app.get('/', (req, res) => res.send('Kutabare backend live!'));
-
-app.post('/api/orders', async (req, res) => {
-  try {
-    const { telegramId, items, deliveryOption, contact, total } = req.body;
-    if (!telegramId || !items || !contact || !total) {
-      return res.status(400).json({ error: 'Missing required fields' });
+bot.start(ctx => {
+  const id = ctx.chat.id;
+  userStates[id] = null;
+  userOrderData[id] = {};
+  ctx.replyWithMarkdown(`Yo! Welcome sa *Kutabare Online Shop*!`, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🛒 View Products', callback_data: 'view_products' }],
+        [{ text: '📦 My Orders', callback_data: 'my_orders' }]
+      ]
     }
+  });
+});
 
-    const newOrder = new Order({
-      telegramId,
-      phone: contact,
-      items,
-      total,
-      deliveryOption: deliveryOption || 'Pickup',
+bot.on('callback_query', async ctx => {
+  const id = ctx.chat.id;
+  const data = ctx.callbackQuery.data;
+
+  if (data === 'view_products') {
+    const buttons = getCategories().map(c => [{ text: c, callback_data: `cat_${c}` }]);
+    return ctx.editMessageText('Pili ka ng category:', {
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]] }
     });
-
-    await newOrder.save();
-
-    const itemsList = newOrder.items.map(
-      (item, idx) => `${idx + 1}. ${item.name} - ${item.variant || ''} - Php ${item.price} x${item.quantity}`
-    ).join('\n');
-
-    const message =
-      `New order received!\n\n` +
-      `Items:\n${itemsList}\n\n` +
-      `Contact: ${newOrder.phone}\n` +
-      `Delivery: ${newOrder.deliveryOption}\n` +
-      `Total: Php ${newOrder.total}\n` +
-      `Order ID: ${newOrder._id}`;
-
-    await bot.sendMessage(ADMIN_CHAT_ID, message);
-
-    res.status(201).json({ message: 'Order saved', orderId: newOrder._id });
-  } catch (err) {
-    console.error('Order error:', err);
-    res.status(500).json({ error: 'Server error' });
   }
-});
 
-app.post('/api/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    order.qrFile = req.file.filename;
-    await order.save();
-
-    const photoUrl = `${process.env.BACKEND_URL}/uploads/${order.qrFile}`;
-    await bot.sendPhoto(order.telegramId, photoUrl, {
-      caption: 'Scan this QR code to pay. Thank you!'
+  if (data.startsWith('cat_')) {
+    const cat = data.replace('cat_', '');
+    const items = getProductList(cat);
+    const buttons = items.map(p => [{
+      text: p.name + (p.variants ? ' ▶' : ''),
+      callback_data: p.variants ? `variants_${p.name}` : `add_${p.name}_noVariant`
+    }]);
+    return ctx.editMessageText(`🧃 *${cat}*`, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
     });
-
-    res.status(200).json({ message: 'QR sent!' });
-  } catch (err) {
-    console.error('QR upload/send error:', err);
-    res.status(500).json({ error: 'Failed to send QR' });
   }
-});
 
-app.post('/api/upload-proof/:orderId', upload.single('proof'), async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    order.paymentProof = req.file.filename;
-    order.paymentStatus = 'Payment Received';
-    await order.save();
-
-    const proofUrl = `${process.env.BACKEND_URL}/uploads/${order.paymentProof}`;
-    await bot.sendPhoto(order.telegramId, proofUrl, {
-      caption: 'Natanggap na namin ang payment proof mo boss. Salamat! Your payment status is now *Payment Received*.',
-      parse_mode: 'Markdown'
+  if (data.startsWith('variants_')) {
+    const name = data.replace('variants_', '');
+    const all = getCategories().flatMap(getProductList);
+    const prod = all.find(p => p.name === name);
+    const buttons = prod.variants.map(v => [{ text: v, callback_data: `add_${name}_${v}` }]);
+    return ctx.editMessageText(`Pili ng variant for *${name}*`, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
     });
-
-    await bot.sendMessage(ADMIN_CHAT_ID,
-      `Payment proof received for order #${order._id}. Status: Payment Received.`);
-
-    res.status(200).json({ message: 'Payment proof uploaded and updated' });
-  } catch (err) {
-    console.error('Proof upload error:', err);
-    res.status(500).json({ error: 'Failed to upload proof' });
   }
+
+  if (data.startsWith('add_')) {
+    const [_, name, variant] = data.split('_');
+    const key = `${name}_${variant}`;
+    userCarts[id] = userCarts[id] || {};
+    userCarts[id][key] = (userCarts[id][key] || 0) + 1;
+
+    await ctx.answerCbQuery(`✅ Added ${name} (${variant})`);
+    return ctx.editMessageReplyMarkup({
+      inline_keyboard: [
+        [{ text: '🛒 View Products', callback_data: 'view_products' }],
+        [{ text: '🚚 Checkout', callback_data: 'checkout' }]
+      ]
+    });
+  }
+
+  if (data === 'checkout') {
+    if (!userCarts[id] || Object.keys(userCarts[id]).length === 0)
+      return ctx.answerCbQuery('Empty cart.');
+    userStates[id] = 'awaiting_delivery_option';
+    return ctx.editMessageText('Pili ng delivery method:', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Pickup', callback_data: 'delivery_pickup' }],
+          [{ text: 'Same-day Delivery', callback_data: 'delivery_sdd' }]
+        ]
+      }
+    });
+  }
+
+  if (data.startsWith('delivery_')) {
+    userOrderData[id].delivery = data.split('_')[1];
+    userStates[id] = 'awaiting_contact';
+    return ctx.editMessageText('Pakibigay ng *contact info* (Name, Number, Address):', { parse_mode: 'Markdown' });
+  }
+
+  if (data === 'back_main') {
+    return ctx.editMessageText('Back to main menu', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🛒 View Products', callback_data: 'view_products' }],
+          [{ text: '📦 My Orders', callback_data: 'my_orders' }]
+        ]
+      }
+    });
+  }
+
+  await ctx.answerCbQuery();
 });
 
-app.get('/api/orders', async (req, res) => {
+bot.on('message', async ctx => {
+  const id = ctx.chat.id;
+  if (userStates[id] !== 'awaiting_contact') return;
+  userOrderData[id].contact = ctx.message.text;
+
+  const cart = userCarts[id];
+  const lines = Object.entries(cart).map(([k, q]) => {
+    const [n, v] = k.split('_');
+    return `${n} (${v}) x${q} - ₱${q * findProductPrice(n)}`;
+  }).join('\n');
+
+  const total = Object.entries(cart).reduce((sum, [k, q]) => {
+    const [n] = k.split('_');
+    return sum + q * findProductPrice(n);
+  }, 0);
+
+  const order = {
+    telegramId: id,
+    cart,
+    contact: userOrderData[id].contact,
+    delivery: userOrderData[id].delivery,
+    total
+  };
+
   try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.status(200).json(orders);
-  } catch (err) {
-    console.error('Fetch orders error:', err);
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    await axios.post(`${BACKEND_URL}/api/orders`, order);
+    await ctx.replyWithMarkdown(
+      `✅ Order received!\nHintayin ang QR code for payment. Salamat boss!`
+    );
+    await bot.telegram.sendMessage(ADMIN_ID,
+      `New order:\nTotal: ₱${total}\nContact: ${order.contact}\nDelivery: ${order.delivery}`
+    );
+    userCarts[id] = {};
+    userOrderData[id] = {};
+    userStates[id] = null;
+  } catch (e) {
+    console.error('Order error:', e.message);
+    await ctx.reply('Order failed. Try again.');
   }
 });
 
-app.patch('/api/orders/:id', async (req, res) => {
+app.post('/payment-webhook', async (req, res) => {
+  const { orderId, paymentStatus } = req.body;
   try {
-    const updated = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ error: 'Order not found' });
-
-    let notifyMsg = '';
-    if (req.body.paymentStatus) {
-      notifyMsg = `Hello! Your order #${updated._id} has been marked as *${req.body.paymentStatus}*. Thank you!`;
-    }
-    if (req.body.orderStatus) {
-      notifyMsg = `Update for order #${updated._id}: Status changed to *${req.body.orderStatus}*.`;
-    }
-
-    if (notifyMsg) {
-      await bot.sendMessage(updated.telegramId, notifyMsg, { parse_mode: 'Markdown' });
-      await bot.sendMessage(ADMIN_CHAT_ID,
-        `Order #${updated._id} updated.\nPayment: ${updated.paymentStatus || '-'}\nStatus: ${updated.orderStatus || '-'}`);
-    }
-
-    res.json(updated);
-  } catch (err) {
-    console.error('Update error:', err);
-    res.status(500).json({ error: 'Update failed' });
+    const { data: order } = await axios.get(`${BACKEND_URL}/api/orders/${orderId}`);
+    if (!order?.telegramId) return res.status(404).send('Not found');
+    const msg = paymentStatus === 'paid'
+      ? `✅ Bayad confirmed. Preparing na, boss!`
+      : `❌ Payment failed. Try ulit.`;
+    await bot.telegram.sendMessage(order.telegramId, msg);
+    res.send('OK');
+  } catch (e) {
+    res.status(500).send('Error');
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Kutabare backend live on ${PORT}`));
