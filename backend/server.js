@@ -5,7 +5,11 @@ const { categories, products } = require('./data/products');
 const cart = require('./utils/cart');
 
 const app = express();
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+app.use(express.json());
+
+// Initialize bot without polling
+const bot = new TelegramBot(process.env.BOT_TOKEN);
+bot.setWebHook(`${process.env.BASE_URL}/bot${process.env.BOT_TOKEN}`);
 
 // Base64-safe callback_data encoder/decoder
 function encodeData(type, category, product = '', variant = '') {
@@ -22,6 +26,12 @@ function decodeData(data) {
   };
 }
 
+// Handle Telegram webhook updates
+app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
 // Start command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -34,128 +44,69 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// Handle callback_data
+// Handle callback queries
 bot.on('callback_query', (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
   if (!data.startsWith('cb_')) return;
 
+  if (data === 'cb_back_main') {
+    const buttons = categories.map(cat => [{ text: cat, callback_data: encodeData('category', cat) }]);
+    return bot.sendMessage(chatId, 'Choose a category:', {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  }
+
   const { type, category, product, variant } = decodeData(data);
 
   if (type === 'category') {
     const categoryProducts = products[category];
-    if (!categoryProducts) {
-      return bot.sendMessage(chatId, 'No products found in this category.');
-    }
+    if (!categoryProducts) return;
 
-    const buttons = Object.keys(categoryProducts).map(productName => [{
-      text: productName,
-      callback_data: encodeData('product', category, productName)
+    // If product is an object with variants, list products by keys
+    const productNames = Object.keys(categoryProducts);
+
+    const buttons = productNames.map(p => [{
+      text: p,
+      callback_data: encodeData('product', category, p)
     }]);
 
     buttons.push([{ text: 'Back to Categories', callback_data: 'cb_back_main' }]);
 
-    bot.sendMessage(chatId, `Products under *${category}*`, {
+    bot.sendMessage(chatId, `Products under *${category}*:`, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: buttons
-      }
+      reply_markup: { inline_keyboard: buttons }
     });
   }
 
   if (type === 'product') {
-    const categoryProducts = products[category];
-    const productEntry = categoryProducts?.[product];
+    const productData = products[category][product];
 
-    if (!productEntry) {
-      return bot.sendMessage(chatId, 'Product not found.');
-    }
-
-    if (typeof productEntry === 'object') {
-      const buttons = Object.keys(productEntry).map(variant => [{
-        text: `${variant} - Php ${productEntry[variant]}`,
-        callback_data: encodeData('variant', category, product, variant)
+    if (typeof productData === 'object') {
+      // Show variants
+      const buttons = Object.keys(productData).map(v => [{
+        text: `${v} - Php ${productData[v]}`,
+        callback_data: encodeData('variant', category, product, v)
       }]);
 
       buttons.push([{ text: 'Back to Categories', callback_data: 'cb_back_main' }]);
 
       bot.sendMessage(chatId, `Variants of *${product}*:`, {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: buttons
-        }
+        reply_markup: { inline_keyboard: buttons }
       });
     } else {
-      cart.add(chatId, { category, product, price: productEntry });
-
-      bot.sendMessage(chatId, `✅ Added *${product}* to your cart.`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'View Cart', callback_data: 'cb_view_cart' }],
-            [{ text: 'Back to Categories', callback_data: 'cb_back_main' }]
-          ]
-        }
-      });
+      // No variants, add directly
+      cart.add(chatId, { category, product, price: productData });
+      bot.sendMessage(chatId, `✅ Added *${product}* to your cart.`, { parse_mode: 'Markdown' });
     }
   }
 
   if (type === 'variant') {
     const price = products[category][product][variant];
     cart.add(chatId, { category, product, variant, price });
-
-    bot.sendMessage(chatId, `✅ Added *${product}* (${variant}) to your cart.`, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'View Cart', callback_data: 'cb_view_cart' }],
-          [{ text: 'Back to Categories', callback_data: 'cb_back_main' }]
-        ]
-      }
-    });
-  }
-
-  if (data === 'cb_view_cart') {
-    const items = cart.get(chatId);
-
-    if (!items.length) {
-      return bot.sendMessage(chatId, 'Your cart is empty.');
-    }
-
-    let message = '*Your Cart:*\n';
-    let total = 0;
-    items.forEach((item, i) => {
-      message += `${i + 1}. ${item.product}${item.variant ? ` (${item.variant})` : ''} - Php ${item.price}\n`;
-      total += item.price;
-    });
-
-    message += `\n*Total:* Php ${total}`;
-
-    bot.sendMessage(chatId, message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Add More', callback_data: 'cb_back_main' }],
-          [{ text: 'Check Out', callback_data: 'cb_checkout' }]
-        ]
-      }
-    });
-  }
-
-  if (data === 'cb_back_main') {
-    const buttons = categories.map(cat => [{ text: cat, callback_data: encodeData('category', cat) }]);
-
-    bot.sendMessage(chatId, 'Choose a category:', {
-      reply_markup: {
-        inline_keyboard: buttons
-      }
-    });
-  }
-
-  if (data === 'cb_checkout') {
-    bot.sendMessage(chatId, 'Checkout not yet implemented. Stay tuned!');
-    // You can expand this later for delivery options, contact info, QR code, etc.
+    bot.sendMessage(chatId, `✅ Added *${product}* (${variant}) to your cart.`, { parse_mode: 'Markdown' });
   }
 });
 
@@ -180,7 +131,7 @@ bot.onText(/\/cart/, (msg) => {
   bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 });
 
-// Base route for Render health check
+// Base route
 app.get('/', (req, res) => {
   res.send('Kutabare Bot Server is running.');
 });
