@@ -297,20 +297,34 @@ bot.on('message', async (msg) => {
 async function confirmOrder(chatId) {
   const state = checkoutStates[chatId];
   const items = cart.get(chatId);
-return;
-} else {
-  return bot.sendMessage(chatId, 'Please send a photo as proof of payment.');
+
+  let summary = `*Order Summary:*\nName: ${state.name}\nPhone: ${state.phone}\nDelivery: ${state.delivery}`;
+  if (state.address) {
+    summary += `\nAddress: ${state.address}`;
+  }
+  summary += '\n\n*Items:*\n';
+
+  let total = 0;
+  items.forEach((item, i) => {
+    summary += `${i + 1}. ${item.label || item.product}${item.variant ? ` (${item.variant})` : ''} - Php ${item.price}\n`;
+    total += item.price;
+  });
+  summary += `\n*Total:* Php ${total}`;
+
+  const qrDoc = await PaymentQR.findOne(); // Get latest QR file ID
+  if (qrDoc?.fileId) {
+    await bot.sendPhoto(chatId, qrDoc.fileId, {
+      caption: summary + '\n\nPlease send a photo of your payment proof:',
+      parse_mode: 'Markdown'
+    });
+  } else {
+    await bot.sendMessage(chatId, summary + '\n\n[No QR code uploaded yet]\nPlease send a photo of your payment proof:', {
+      parse_mode: 'Markdown'
+    });
+  }
+
+  state.step = 'awaiting_proof';
 }
-
-} });
-
-async function confirmOrder(chatId) { const state = checkoutStates[chatId]; const items = cart.get(chatId); let total = 0; let summary = 'Order Summary: '; items.forEach((item, i) => { summary += ${i + 1}. ${item.label || item.product}${item.variant ?  (${item.variant}): ''} - Php ${item.price}; total += item.price; }); summary += \n*Total:* Php ${total};
-
-const qr = await PaymentQR.findOne();
-
-if (qr && qr.fileId) { await bot.sendPhoto(chatId, qr.fileId, { caption: summary + '\n\nPlease send a screenshot/photo of your payment to confirm your order.', parse_mode: 'Markdown' }); } else { await bot.sendMessage(chatId, summary + '\n\nNo QR code found. Please contact the admin.'); }
-
-state.step = 'awaiting_proof'; }
 
 // Handle QR upload by Admin bot.onText(//upload_qr/, async (msg) => { if (msg.chat.id.toString() !== process.env.ADMIN_CHAT_ID) return; await bot.sendMessage(msg.chat.id, 'Please send the QR code image you want to set as payment QR.'); checkoutStates[msg.chat.id] = { step: 'awaiting_qr_upload' }; });
 
