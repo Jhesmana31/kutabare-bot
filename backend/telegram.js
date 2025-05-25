@@ -12,7 +12,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '7368568730:AAHbnlzq6a3aSxrFstJ12caHi
 const BACKEND_URL = process.env.BACKEND_URL || 'https://kutabarebot-backend.onrender.com';
 const WEBHOOK_URL = (process.env.BACKEND_URL || 'https://kutabarebot.onrender.com') + `/bot${BOT_TOKEN}`;
 
-const bot = new TelegramBot(BOT_TOKEN);
+const bot = new TelegramBot(BOT_TOKEN, { webHook: true });
 bot.setWebHook(WEBHOOK_URL);
 
 const adminId = 7699555744;
