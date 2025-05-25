@@ -179,7 +179,12 @@ app.post('/payment-webhook', async (req, res) => {
 });
 
 // Final server start
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
+if (!PORT) {
+  throw new Error("PORT is not defined. This is required by Render.");
+}
+
 app.listen(PORT, () => {
   console.log(`Kutabare backend live on ${PORT}`);
+});
 });
