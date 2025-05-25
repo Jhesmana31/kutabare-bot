@@ -165,62 +165,69 @@ bot.on('callback_query', async ctx => {
     userOrderData[id].deliveryOption = deliveryOption;
     userStates[id] = 'collecting_contact';
 
-    await ctx.editMessageText('Please send your contact number:');
+    // Ask user to share their contact using Telegram native button
+    await bot.telegram.sendMessage(id, 'Please share your contact number:', {
+      reply_markup: {
+        keyboard: [
+          [{ text: 'Share Contact Number', request_contact: true }],
+        ],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      },
+    });
     await ctx.answerCbQuery();
     return;
   }
 });
 
-// Handle contact number sent as normal text when state = collecting_contact
-bot.on('text', async ctx => {
+// Remove old manual phone input handler (commented out)
+// bot.on('text', async ctx => {
+//   ... your old manual phone input handling ...
+// });
+
+// New handler for native Telegram contact sharing
+bot.on('contact', async ctx => {
   const id = ctx.from.id;
 
-  // Ignore commands here, only proceed if in collecting_contact state
-  if (userStates[id] === 'collecting_contact') {
-    const contactText = ctx.message.text.trim();
-    if (!isValidPhoneNumber(contactText)) {
-      return ctx.reply('Please send a valid contact number (digits only, optionally starting with +).');
-    }
-    userOrderData[id].contact = contactText;
+  if (userStates[id] !== 'collecting_contact') return;
 
-    const cart = userCarts[id] || {};
-    const orderData = {
-      telegramId: id,
-      items: Object.entries(cart).map(([name, qty]) => ({ name, quantity: qty })),
-      contact: userOrderData[id].contact,
-      deliveryOption: userOrderData[id].deliveryOption,
-    };
+  const contact = ctx.message.contact.phone_number;
+  userOrderData[id].contact = contact;
 
-    // Calculate total
-    let total = 0;
-    for (const [name, qty] of Object.entries(cart)) {
-      const priceMatch = name.match(/₱(\d+)/);
-      const price = priceMatch ? parseInt(priceMatch[1]) : 0;
-      total += price * qty;
-    }
+  const cart = userCarts[id] || {};
+  const orderData = {
+    telegramId: id,
+    items: Object.entries(cart).map(([name, qty]) => ({ name, quantity: qty })),
+    contact: contact,
+    deliveryOption: userOrderData[id].deliveryOption,
+  };
 
-    const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
-
-    // Save order in DB
-    const newOrder = new Order(orderData);
-    await newOrder.save();
-
-    await ctx.replyWithMarkdown(
-      `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
-      `Hintayin ang QR code for payment. Salamat boss!`
-    );
-
-    // Notify admin to upload QR code
-    await bot.telegram.sendMessage(ADMIN_ID,
-      `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${orderData.contact}\nDelivery: ${orderData.deliveryOption}\n\n` +
-      `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
-    );
-
-    qrPending[newOrder._id] = id;
-    userCarts[id] = {};
-    userOrderData[id] = {};
-    userStates[id] = null;
+  let total = 0;
+  for (const [name, qty] of Object.entries(cart)) {
+    const priceMatch = name.match(/₱(\d+)/);
+    const price = priceMatch ? parseInt(priceMatch[1]) : 0;
+    total += price * qty;
   }
+
+  const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
+
+  const newOrder = new Order(orderData);
+  await newOrder.save();
+
+  await ctx.replyWithMarkdown(
+    `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
+    `Hintayin ang QR code for payment. Salamat boss!`
+  );
+
+  await bot.telegram.sendMessage(ADMIN_ID,
+    `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${contact}\nDelivery: ${orderData.deliveryOption}\n\n` +
+    `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
+  );
+
+  qrPending[newOrder._id] = id;
+  userCarts[id] = {};
+  userOrderData[id] = {};
+  userStates[id] = null;
 });
 
 // Handle photos for QR and proof as before (no change needed)
