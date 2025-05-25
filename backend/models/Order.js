@@ -1,39 +1,26 @@
 const mongoose = require('mongoose');
 
-const orderSchema = new mongoose.Schema({
-  telegramId: {
-    type: String,
-    required: true
-  },
-  phone: {
-    type: String,
-    required: true
-  },
-  items: {
-    type: Array,
-    required: true
-  },
-  total: {
-    type: Number,
-    required: true
-  },
-  deliveryOption: {
-    type: String,
-    default: 'Pickup'
-  },
+const ItemSchema = new mongoose.Schema({
+  name: String,
+  variant: { type: String, default: 'noVariant' },
+  price: Number,
+  quantity: Number,
+});
+
+const OrderSchema = new mongoose.Schema({
+  telegramId: { type: Number, required: true },
+  phone: String,
+  items: [ItemSchema],
+  total: Number,
+  deliveryOption: { type: String, default: 'Pickup' },
+  qrFile: String,
+  paymentProof: String,
   paymentStatus: {
     type: String,
-    enum: ['Pending', 'Paid'],
-    default: 'Pending'
+    enum: ['Pending', 'Awaiting Proof', 'Payment Confirmed', 'Rejected'],
+    default: 'Pending',
   },
-  orderStatus: {
-    type: String,
-    enum: ['Pending', 'Preparing', 'Ready for Pickup', 'Out for Delivery', 'Completed'],
-    default: 'Pending'
-  },
-  qrFile: {
-    type: String
-  }
-}, { timestamps: true });
+  createdAt: { type: Date, default: Date.now },
+});
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = mongoose.model('Order', OrderSchema);
