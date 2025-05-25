@@ -15,8 +15,7 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new Telegraf(BOT_TOKEN);
 app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
-bot.telegram.setWebhook(WEBHOOK_URL);
-
+bot.telegram.setWebhook(WEBHOOK_URL); // Webhook set once here
 
 // In-memory store
 const userStates = {}, userCarts = {}, userOrderData = {};
@@ -151,9 +150,7 @@ bot.on('message', async ctx => {
 
   try {
     await axios.post(`${BACKEND_URL}/api/orders`, order);
-    await ctx.replyWithMarkdown(
-      `✅ Order received!\nHintayin ang QR code for payment. Salamat boss!`
-    );
+    await ctx.replyWithMarkdown(`✅ Order received!\nHintayin ang QR code for payment. Salamat boss!`);
     await bot.telegram.sendMessage(ADMIN_ID,
       `New order:\nTotal: ₱${total}\nContact: ${order.contact}\nDelivery: ${order.delivery}`
     );
@@ -181,13 +178,8 @@ app.post('/payment-webhook', async (req, res) => {
   }
 });
 
+// Final server start
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Kutabare backend live on ${PORT}`);
-  try {
-    await bot.telegram.setWebhook(WEBHOOK_URL);
-    console.log(`Webhook set to ${WEBHOOK_URL}`);
-  } catch (err) {
-    console.error('Webhook error:', err.message);
-  }
 });
