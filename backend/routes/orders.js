@@ -5,7 +5,7 @@ const Order = require('../models/Order');
 
 const router = express.Router();
 
-// File upload setup
+// Multer storage config for QR code uploads
 const storage = multer.diskStorage({
   destination: './uploads/',
   filename: (req, file, cb) => {
@@ -14,10 +14,11 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// POST create new order
+// POST: Create new order
 router.post('/', async (req, res) => {
   try {
     const { telegramId, items, deliveryOption, contact, total } = req.body;
+
     if (!telegramId || !items || !contact || !total) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -32,7 +33,7 @@ router.post('/', async (req, res) => {
 
     await newOrder.save();
 
-    // Notify admin on Telegram (bot instance will be attached in server.js)
+    // Send notification to admin via bot if attached
     if (req.app.get('bot')) {
       const bot = req.app.get('bot');
       bot.sendMessage(process.env.ADMIN_CHAT_ID, 
@@ -52,7 +53,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET all orders (admin dashboard)
+// GET: Fetch all orders (for admin dashboard)
 router.get('/', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -63,7 +64,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST upload QR code and send photo to customer
+// POST: Upload QR code image and send it to customer via Telegram bot
 router.post('/upload-qr/:orderId', upload.single('qr'), async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId);
