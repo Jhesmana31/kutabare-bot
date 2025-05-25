@@ -1,52 +1,16 @@
 const products = [
   // Cock Rings & Toys
-  {
-    name: 'Cock Ring - Pack of 3',
-    price: 80,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: 'Cock Ring Vibrator',
-    price: 60,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: 'Spikey Jelly (Red)',
-    price: 160,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: 'Spikey Jelly (Black)',
-    price: 160,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: '"Th Bolitas" Jelly',
-    price: 160,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: 'Portable Wired Vibrator Egg',
-    price: 130,
-    category: 'Cock Rings & Toys'
-  },
-  {
-    name: '7 Inches African Version Dildo',
-    price: 270,
-    category: 'Cock Rings & Toys'
-  },
+  { name: 'Cock Ring - Pack of 3', price: 80, category: 'Cock Rings & Toys' },
+  { name: 'Cock Ring Vibrator', price: 60, category: 'Cock Rings & Toys' },
+  { name: 'Spikey Jelly (Red)', price: 160, category: 'Cock Rings & Toys' },
+  { name: 'Spikey Jelly (Black)', price: 160, category: 'Cock Rings & Toys' },
+  { name: '"Th Bolitas" Jelly', price: 160, category: 'Cock Rings & Toys' },
+  { name: 'Portable Wired Vibrator Egg', price: 130, category: 'Cock Rings & Toys' },
+  { name: '7 Inches African Version Dildo', price: 270, category: 'Cock Rings & Toys' },
 
   // Lubes & Condoms
-  {
-    name: 'Monogatari Lube Tube',
-    price: 120,
-    category: 'Lubes & Condoms'
-  },
-  {
-    name: 'Monogatari Lube Pinhole',
-    price: 120,
-    category: 'Lubes & Condoms'
-  },
+  { name: 'Monogatari Lube Tube', price: 120, category: 'Lubes & Condoms' },
+  { name: 'Monogatari Lube Pinhole', price: 120, category: 'Lubes & Condoms' },
   {
     name: 'Monogatari Flavored Lube',
     price: 200,
@@ -61,28 +25,12 @@ const products = [
   },
 
   // Performance Enhancers
-  {
-    name: 'Maxman per Tab',
-    price: 40,
-    category: 'Performance Enhancers'
-  },
-  {
-    name: 'Maxman per Pad',
-    price: 400,
-    category: 'Performance Enhancers'
-  },
+  { name: 'Maxman per Tab', price: 40, category: 'Performance Enhancers' },
+  { name: 'Maxman per Pad', price: 400, category: 'Performance Enhancers' },
 
   // Spicy Accessories
-  {
-    name: 'Delay Collar',
-    price: 200,
-    category: 'Spicy Accessories'
-  },
-  {
-    name: 'Delay Ejaculation Buttplug',
-    price: 200,
-    category: 'Spicy Accessories'
-  },
+  { name: 'Delay Collar', price: 200, category: 'Spicy Accessories' },
+  { name: 'Delay Ejaculation Buttplug', price: 200, category: 'Spicy Accessories' },
   {
     name: 'Masturbator Cup',
     price: 120,
@@ -103,16 +51,8 @@ const products = [
     category: 'Essentials',
     variants: ['Peach', 'Mint']
   },
-  {
-    name: 'Insulin Syringe',
-    price: 20,
-    category: 'Essentials'
-  },
-  {
-    name: 'Sterile Water for Injection',
-    price: 15,
-    category: 'Essentials'
-  }
+  { name: 'Insulin Syringe', price: 20, category: 'Essentials' },
+  { name: 'Sterile Water for Injection', price: 15, category: 'Essentials' }
 ];
 
 function getCategories() {
