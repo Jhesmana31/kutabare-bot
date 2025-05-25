@@ -8,7 +8,7 @@ const OrderSchema = new mongoose.Schema({
   items: [
     {
       name: String,
-      variant: String,    // added variant
+      variant: String,    // added variant support
       quantity: Number,
     },
   ],
@@ -28,9 +28,9 @@ const OrderSchema = new mongoose.Schema({
     default: 'Pending Payment',
   },
   proofImage: {
-    type: String,       // Telegram file_id for proof of payment
+    type: String,       // Telegram file_id for proof of payment image
   },
-  qrFile: {              // added qrFile for QR code upload
+  qrFile: {              // added qrFile for QR code Telegram file_id
     type: String,
   },
 }, { timestamps: true });
