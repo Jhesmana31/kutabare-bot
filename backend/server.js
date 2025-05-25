@@ -181,4 +181,12 @@ app.post('/payment-webhook', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Kutabare backend live on ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`Kutabare backend live on ${PORT}`);
+  try {
+    await bot.telegram.setWebhook(WEBHOOK_URL);
+    console.log(`Webhook set to ${WEBHOOK_URL}`);
+  } catch (err) {
+    console.error('Webhook error:', err.message);
+  }
+});
