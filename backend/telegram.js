@@ -1,290 +1,206 @@
 const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
 const express = require('express');
 const bodyParser = require('body-parser');
+const axios = require('axios');
 const { getCategories, getProductList } = require('./data/products');
 
 const app = express();
 app.use(bodyParser.json());
 
-// --- BOT INITIALISATION (webhook mode) ---
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true, webHook: { port: process.env.PORT || 3000, host: '0.0.0.0' } });
-
-// Replace with your backend URL that saves orders and handles payment status updates
-const BACKEND_URL = process.env.BACKEND_URL;
+const bot = new TelegramBot('7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw', { webHook: true });
+bot.setWebHook('https://kutabarebot.onrender.com/bot7368568730:AAHbnlzq6a3aSxrFstJ12caHiUmn8aW7txw');
 
 const adminId = 7699555744;
+const BACKEND_URL = 'https://kutabarebot-backend.onrender.com';
 
-// In-memory state
+const userStates = {};
 const userCarts = {};
-const userStates = {};     // track where user is in the order process
-const userOrderData = {};  // temporarily stores contact + delivery
+const userOrderData = {};
 
-// --- Helpers ---
 function findProductPrice(name, variant = 'noVariant') {
-  const allProducts = getCategories().flatMap(cat => getProductList(cat));
-  const product = allProducts.find(p => p.name === name);
+  const all = getCategories().flatMap(cat => getProductList(cat));
+  const product = all.find(p => p.name === name);
   return product ? product.price : 0;
 }
 
-// --- /start ---
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   userStates[chatId] = null;
   userOrderData[chatId] = {};
-  bot.sendMessage(chatId,
-    'Yo! Welcome sa Kutabare Online Shop! Pili na sa mga pampasarap, boss!',
-    {
+  bot.sendMessage(chatId, `Yo! Welcome sa *Kutabare Online Shop*! Pili na sa mga pampasarap, boss!`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🛒 View Products', callback_data: 'view_products' }],
+        [{ text: '📦 My Orders', callback_data: 'my_orders' }]
+      ]
+    }
+  });
+});
+
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  if (data === 'view_products') {
+    const categoryButtons = getCategories().map(cat => [{ text: cat, callback_data: `cat_${cat}` }]);
+    bot.sendMessage(chatId, 'Pili ka ng category:', {
+      reply_markup: {
+        inline_keyboard: [...categoryButtons, [{ text: '⬅ Back', callback_data: 'back_main' }]]
+      }
+    });
+  } else if (data.startsWith('cat_')) {
+    const category = data.replace('cat_', '');
+    const products = getProductList(category);
+
+    const productButtons = products.map(p => [{
+      text: p.name + (p.variants ? ' ▶' : ''),
+      callback_data: p.variants ? `variants_${p.name}` : `add_${p.name}_noVariant`
+    }]);
+
+    bot.sendMessage(chatId, `🧃 *${category}*`, {
       parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [...productButtons, [{ text: '⬅ Back to Categories', callback_data: 'view_products' }]]
+      }
+    });
+  } else if (data.startsWith('variants_')) {
+    const productName = data.replace('variants_', '');
+    const allProducts = getCategories().flatMap(cat => getProductList(cat));
+    const product = allProducts.find(p => p.name === productName);
+    if (!product) return;
+
+    const variantButtons = product.variants.map(v => [{
+      text: v,
+      callback_data: `add_${product.name}_${v}`
+    }]);
+
+    bot.sendMessage(chatId, `Pili ng variant for *${product.name}*`, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [...variantButtons, [{ text: '⬅ Back to Categories', callback_data: 'view_products' }]]
+      }
+    });
+  } else if (data.startsWith('add_')) {
+    const [_, name, variant] = data.split('_');
+    const key = `${name}_${variant}`;
+    userCarts[chatId] = userCarts[chatId] || {};
+    userCarts[chatId][key] = (userCarts[chatId][key] || 0) + 1;
+
+    bot.sendMessage(chatId, `✅ Added *${name}* (${variant}) to cart.`, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🛒 View Products', callback_data: 'view_products' }],
+          [{ text: '🚚 Proceed to Checkout', callback_data: 'checkout' }]
+        ]
+      }
+    });
+  } else if (data === 'checkout') {
+    const cart = userCarts[chatId];
+    if (!cart || Object.keys(cart).length === 0) {
+      return bot.sendMessage(chatId, 'Your cart is empty.');
+    }
+
+    userStates[chatId] = 'awaiting_delivery_option';
+    bot.sendMessage(chatId, 'Pili ka ng delivery method:', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Pickup', callback_data: 'delivery_pickup' }],
+          [{ text: 'Same-day Delivery', callback_data: 'delivery_sdd' }]
+        ]
+      }
+    });
+  } else if (data.startsWith('delivery_')) {
+    const option = data.replace('delivery_', '');
+    userOrderData[chatId] = { ...userOrderData[chatId], delivery: option };
+    userStates[chatId] = 'awaiting_contact';
+    bot.sendMessage(chatId, 'Pakibigay ng contact info (Name, Number, Address):');
+  } else if (data === 'back_main') {
+    bot.sendMessage(chatId, 'Back to main menu', {
       reply_markup: {
         inline_keyboard: [
           [{ text: '🛒 View Products', callback_data: 'view_products' }],
           [{ text: '📦 My Orders', callback_data: 'my_orders' }]
         ]
       }
-    }
-  );
-});
-
-// --- SINGLE callback_query HANDLER ---
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-  const state = userStates[chatId];
-
-  if (state === 'awaiting_delivery') {
-    if (data === 'delivery_pickup' || data === 'delivery_delivery') {
-      const deliveryOption = data === 'delivery_pickup' ? 'Pickup' : 'Same-day Delivery';
-      userOrderData[chatId].deliveryOption = deliveryOption;
-
-      const cart = userCarts[chatId] || [];
-      if (cart.length === 0) {
-        userStates[chatId] = null;
-        userOrderData[chatId] = {};
-        return bot.sendMessage(chatId, 'Wala kang item sa cart mo bossing. Pili ka muna.');
-      }
-
-      // Build order details
-      const orderList = cart.map(item =>
-        `- ${item.name} (${item.variant !== 'noVariant' ? item.variant : 'No Variant'})`
-      ).join('\n');
-
-      const itemsForBackend = cart.map(item => ({
-        name: item.name,
-        variant: item.variant,
-        price: findProductPrice(item.name, item.variant),
-        quantity: 1
-      }));
-
-      const total = itemsForBackend.reduce((sum, p) => sum + (p.price * p.quantity), 0);
-
-      try {
-        const response = await axios.post(`${BACKEND_URL}/api/orders`, {
-          telegramId: chatId,
-          items: itemsForBackend,
-          contact: userOrderData[chatId].contact,
-          total,
-          deliveryOption
-        });
-        // Store order ID returned by backend for payment tracking
-        userOrderData[chatId].orderId = response.data.orderId;
-      } catch (err) {
-        console.error('Order save failed:', err.message);
-        userStates[chatId] = null;
-        userOrderData[chatId] = {};
-        return bot.sendMessage(chatId,
-          'Ayyy. Di ko masave order mo boss. PM mo ako manually please.');
-      }
-
-      // Notify admin & user
-      bot.sendMessage(adminId,
-        `NEW ORDER ALERT from ${chatId}:\n\n${orderList}\n\n` +
-        `Contact: ${userOrderData[chatId].contact}\n` +
-        `Delivery: ${deliveryOption}\nTotal: ₱${total}`
-      );
-
-      bot.sendMessage(chatId,
-        `Ayos! Order confirmed:\n\n${orderList}\n\n` +
-        `Delivery: ${deliveryOption}\nTotal: ₱${total}\n\n` +
-        `Hintayin mo lang ang QR or payment link na ipapadala ko once ready ha.`,
-        { parse_mode: 'Markdown' }
-      );
-
-      // Reset cart and states, but keep orderId for payment tracking if needed
-      userStates[chatId] = null;
-      userCarts[chatId] = [];
-      // Keep userOrderData for payment tracking (optional: clear after some time)
-
-      return;
-    }
-
-    if (data === 'cancel_order') {
-      userStates[chatId] = null;
-      userOrderData[chatId] = {};
-      return bot.sendMessage(chatId,
-        'Order cancelled. Kung gusto mo mag-order ulit, i-type lang /start boss!');
-    }
-
-    // Ignore other callbacks if awaiting_delivery
-    return;
-  }
-
-  // Normal navigation flows...
-
-  if (data === 'view_products') {
-    const categories = getCategories();
-    const buttons = categories.map(cat => ([{
-      text: cat,
-      callback_data: `cat_${encodeURIComponent(cat)}`
-    }]));
-    return bot.sendMessage(chatId,
-      'Anong trip mo today? Pili ka ng category:',
-      { reply_markup: { inline_keyboard: buttons } }
-    );
-  }
-
-  if (data.startsWith('cat_')) {
-    const category = decodeURIComponent(data.replace('cat_', ''));
-    const products = getProductList(category);
-    if (products.length === 0) {
-      return bot.sendMessage(chatId,
-        `Walang laman ang category na 'yan bossing. Pili ka muna ng iba.`);
-    }
-    const keyboard = products.map(p => ([{
-      text: `${p.name} - ₱${p.price}`,
-      callback_data: `prod_${encodeURIComponent(category)}_${encodeURIComponent(p.name)}`
-    }]));
-    keyboard.push([{ text: '« Back to Categories', callback_data: 'view_products' }]);
-    return bot.sendMessage(chatId,
-      `Ayan na! Pili na kung anong pampasarap ang gusto mo:`,
-      { reply_markup: { inline_keyboard: keyboard } }
-    );
-  }
-
-  if (data.startsWith('prod_')) {
-    const [, catEnc, nameEnc] = data.split('_');
-    const category = decodeURIComponent(catEnc);
-    const productName = decodeURIComponent(nameEnc);
-    const product = getProductList(category).find(p => p.name === productName);
-    if (!product) return bot.sendMessage(chatId, 'Product not found.');
-
-    const variantButtons = product.variants
-      ? product.variants.map(v => ([{
-        text: v,
-        callback_data: `cart_${encodeURIComponent(product.name)}_${encodeURIComponent(v)}`
-      }]))
-      : [[{
-        text: 'Add to Cart',
-        callback_data: `cart_${encodeURIComponent(product.name)}_noVariant`
-      }]];
-
-    variantButtons.push([{ text: '« Back to Categories', callback_data: 'view_products' }]);
-
-    return bot.sendMessage(chatId,
-      `*${product.name}*\n\nPrice: ₱${product.price}`,
-      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: variantButtons } }
-    );
-  }
-
-  if (data.startsWith('cart_')) {
-    const [, nameEnc, varEnc] = data.split('_');
-    const name = decodeURIComponent(nameEnc);
-    const variant = decodeURIComponent(varEnc);
-
-    if (!userCarts[chatId]) userCarts[chatId] = [];
-    userCarts[chatId].push({ name, variant });
-
-    return bot.sendMessage(chatId,
-      `Added *${name}* (${variant !== 'noVariant' ? variant : 'No Variant'}) to cart mo, boss.`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '🧾 Place Order', callback_data: 'place_order' }]] }
-      }
-    );
-  }
-
-  if (data === 'place_order') {
-    const cart = userCarts[chatId];
-    if (!cart || cart.length === 0) {
-      return bot.sendMessage(chatId,
-        'Wala kang item sa cart mo bossing. Pili ka muna.');
-    }
-    userStates[chatId] = 'awaiting_contact';
-    return bot.sendMessage(chatId,
-      'Ano ang contact number mo, boss? (Please type your phone number)');
-  }
-
-  if (data === 'my_orders') {
-    // Here you can integrate to show user's order status
-    return bot.sendMessage(chatId,
-      'Feature coming soon! For now, wait for payment confirmation after placing your order.');
+    });
   }
 });
 
-// --- MESSAGE HANDLER (contact input) ---
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
+  const state = userStates[chatId];
+  if (state === 'awaiting_contact') {
+    const contact = msg.text;
+    userOrderData[chatId].contact = contact;
 
-  // Ignore commands
-  if (msg.text && msg.text.startsWith('/')) return;
+    const cart = userCarts[chatId];
+    const summary = Object.entries(cart).map(([key, qty]) => {
+      const [name, variant] = key.split('_');
+      const price = findProductPrice(name, variant);
+      return `${name} (${variant}) x${qty} - ₱${qty * price}`;
+    }).join('\n');
 
-  if (userStates[chatId] === 'awaiting_contact') {
-    const contact = msg.text.trim();
+    const total = Object.entries(cart).reduce((sum, [key, qty]) => {
+      const [name, variant] = key.split('_');
+      const price = findProductPrice(name, variant);
+      return sum + qty * price;
+    }, 0);
 
-    if (!/^\d{10,11}$/.test(contact)) {
-      return bot.sendMessage(chatId,
-        'Boss, please enter a valid 10-11 digit phone number.');
-    }
+    const order = {
+      telegramId: chatId,
+      cart,
+      contact,
+      delivery: userOrderData[chatId].delivery,
+      total
+    };
 
-    userOrderData[chatId] = { contact };
-    userStates[chatId] = 'awaiting_delivery';
+    const orderRes = await axios.post(`${BACKEND_URL}/api/orders`, order);
+    const { orderId, qrLink } = orderRes.data;
 
-    return bot.sendMessage(chatId,
-      'Pili ka ng delivery option boss:',
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'Pickup', callback_data: 'delivery_pickup' }],
-            [{ text: 'Same-day Delivery', callback_data: 'delivery_delivery' }],
-            [{ text: 'Cancel Order', callback_data: 'cancel_order' }]
-          ]
-        }
-      }
-    );
+    await bot.sendMessage(chatId,
+      `✅ *Order Summary:*\n\n${summary}\n\n*Total: ₱${total}*\n\n` +
+      `Delivery: ${order.delivery}\nContact: ${contact}\n\n` +
+      `Scan or tap the link below to pay:\n${qrLink}`, {
+      parse_mode: 'Markdown'
+    });
+
+    await bot.sendMessage(adminId, `New order from @${msg.from.username || 'N/A'}\nOrder ID: ${orderId}\nTotal: ₱${total}`);
+
+    userCarts[chatId] = {};
+    userOrderData[chatId] = {};
+    userStates[chatId] = null;
   }
 });
 
-// --- PAYMENT STATUS UPDATE WEBHOOK ---
+// --- PAYMENT STATUS WEBHOOK ---
 app.post('/payment-webhook', async (req, res) => {
+  const { orderId, paymentStatus } = req.body;
   try {
-    const { orderId, paymentStatus } = req.body;
-    if (!orderId || !paymentStatus) {
-      return res.status(400).send('Missing orderId or paymentStatus');
-    }
-
-    // Fetch order details from backend to get telegramId and order summary
     const orderRes = await axios.get(`${BACKEND_URL}/api/orders/${orderId}`);
     const order = orderRes.data;
 
-    if (!order || !order.telegramId) {
-      return res.status(404).send('Order not found or telegramId missing');
-    }
+    if (!order || !order.telegramId) return res.status(404).send('Not found');
 
-    // Notify customer about payment status update
-    let statusText = '';
+    const chatId = order.telegramId;
+    let statusMsg = 'Payment status updated.';
+
     if (paymentStatus === 'paid') {
-      statusText = `Boss, nareceive ko na yung bayad mo for Order *#${orderId}*. Paantay lang habang pinoproseso namin.`;
+      statusMsg = `✅ Bayad confirmed, boss! Preparing na order mo.\nSalamat sa Kutabare Online Shop!`;
     } else if (paymentStatus === 'failed') {
-      statusText = `Boss, mukhang may problema sa bayad mo for Order *#${orderId}*. Paki-double check ang QR or payment link.`;
-    } else {
-      statusText = `Update sa Order *#${orderId}*: Status - *${paymentStatus}*.`;
+      statusMsg = `❌ Payment failed. Try ulit or contact us.`;
     }
 
-    await bot.sendMessage(order.telegramId, statusText, { parse_mode: 'Markdown' });
-
-    return res.status(200).send('Notification sent');
+    await bot.sendMessage(chatId, statusMsg);
+    res.status(200).send('Notification sent');
   } catch (err) {
-    console.error('Payment webhook error:', err.message);
-    return res.status(500).send('Server error');
+    console.error(err);
+    res.status(500).send('Error');
   }
+});
+
+// --- EXPRESS START ---
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Bot server running...');
 });
