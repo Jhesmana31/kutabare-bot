@@ -334,5 +334,7 @@ if (state && state.step === 'awaiting_qr_upload') { const fileId = msg.photo[msg
 
 // Express route for webhook app.post(/bot${process.env.BOT_TOKEN}, (req, res) => { bot.processUpdate(req.body); res.sendStatus(200); });
 
-const PORT = process.env.PORT || 3000; app.listen(PORT, () => { console.log(Server running on port ${PORT}); });
-
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
