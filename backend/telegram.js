@@ -1,9 +1,19 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const express = require('express');
+const bodyParser = require('body-parser');
 const { getCategories, getProductList } = require('./data/products');
 
+const app = express();
+app.use(bodyParser.json());
+
 // --- BOT INITIALISATION (webhook mode) ---
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true, webHook: { port: process.env.PORT || 3000, host: '0.0.0.0' } });
+
+// Replace with your backend URL that saves orders and handles payment status updates
+const BACKEND_URL = process.env.BACKEND_URL;
+
+const adminId = 7699555744;
 
 // In-memory state
 const userCarts = {};
@@ -39,12 +49,9 @@ bot.onText(/\/start/, (msg) => {
 // --- SINGLE callback_query HANDLER ---
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
-  const data   = query.data;
-  const state  = userStates[chatId];
+  const data = query.data;
+  const state = userStates[chatId];
 
-  /* =================================================
-     1) DELIVERY-SELECTION FLOW (when awaiting_delivery)
-  ================================================== */
   if (state === 'awaiting_delivery') {
     if (data === 'delivery_pickup' || data === 'delivery_delivery') {
       const deliveryOption = data === 'delivery_pickup' ? 'Pickup' : 'Same-day Delivery';
@@ -63,7 +70,7 @@ bot.on('callback_query', async (query) => {
       ).join('\n');
 
       const itemsForBackend = cart.map(item => ({
-        name:  item.name,
+        name: item.name,
         variant: item.variant,
         price: findProductPrice(item.name, item.variant),
         quantity: 1
@@ -72,13 +79,15 @@ bot.on('callback_query', async (query) => {
       const total = itemsForBackend.reduce((sum, p) => sum + (p.price * p.quantity), 0);
 
       try {
-        await axios.post(`${process.env.BACKEND_URL}/api/orders`, {
+        const response = await axios.post(`${BACKEND_URL}/api/orders`, {
           telegramId: chatId,
           items: itemsForBackend,
           contact: userOrderData[chatId].contact,
           total,
           deliveryOption
         });
+        // Store order ID returned by backend for payment tracking
+        userOrderData[chatId].orderId = response.data.orderId;
       } catch (err) {
         console.error('Order save failed:', err.message);
         userStates[chatId] = null;
@@ -88,7 +97,6 @@ bot.on('callback_query', async (query) => {
       }
 
       // Notify admin & user
-      const adminId = 7699555744;
       bot.sendMessage(adminId,
         `NEW ORDER ALERT from ${chatId}:\n\n${orderList}\n\n` +
         `Contact: ${userOrderData[chatId].contact}\n` +
@@ -102,10 +110,11 @@ bot.on('callback_query', async (query) => {
         { parse_mode: 'Markdown' }
       );
 
-      // Reset
-      userStates[chatId]   = null;
-      userOrderData[chatId] = {};
-      userCarts[chatId]    = [];
+      // Reset cart and states, but keep orderId for payment tracking if needed
+      userStates[chatId] = null;
+      userCarts[chatId] = [];
+      // Keep userOrderData for payment tracking (optional: clear after some time)
+
       return;
     }
 
@@ -116,13 +125,12 @@ bot.on('callback_query', async (query) => {
         'Order cancelled. Kung gusto mo mag-order ulit, i-type lang /start boss!');
     }
 
-    // If awaiting_delivery but pressed something else, ignore
+    // Ignore other callbacks if awaiting_delivery
     return;
   }
 
-  /* =================================================
-     2) NORMAL NAVIGATION FLOW
-  ================================================== */
+  // Normal navigation flows...
+
   if (data === 'view_products') {
     const categories = getCategories();
     const buttons = categories.map(cat => ([{
@@ -155,20 +163,20 @@ bot.on('callback_query', async (query) => {
 
   if (data.startsWith('prod_')) {
     const [, catEnc, nameEnc] = data.split('_');
-    const category    = decodeURIComponent(catEnc);
+    const category = decodeURIComponent(catEnc);
     const productName = decodeURIComponent(nameEnc);
-    const product     = getProductList(category).find(p => p.name === productName);
+    const product = getProductList(category).find(p => p.name === productName);
     if (!product) return bot.sendMessage(chatId, 'Product not found.');
 
     const variantButtons = product.variants
       ? product.variants.map(v => ([{
-          text: v,
-          callback_data: `cart_${encodeURIComponent(product.name)}_${encodeURIComponent(v)}`
-        }]))
+        text: v,
+        callback_data: `cart_${encodeURIComponent(product.name)}_${encodeURIComponent(v)}`
+      }]))
       : [[{
-          text: 'Add to Cart',
-          callback_data: `cart_${encodeURIComponent(product.name)}_noVariant`
-        }]];
+        text: 'Add to Cart',
+        callback_data: `cart_${encodeURIComponent(product.name)}_noVariant`
+      }]];
 
     variantButtons.push([{ text: '« Back to Categories', callback_data: 'view_products' }]);
 
@@ -180,7 +188,7 @@ bot.on('callback_query', async (query) => {
 
   if (data.startsWith('cart_')) {
     const [, nameEnc, varEnc] = data.split('_');
-    const name    = decodeURIComponent(nameEnc);
+    const name = decodeURIComponent(nameEnc);
     const variant = decodeURIComponent(varEnc);
 
     if (!userCarts[chatId]) userCarts[chatId] = [];
@@ -207,6 +215,7 @@ bot.on('callback_query', async (query) => {
   }
 
   if (data === 'my_orders') {
+    // Here you can integrate to show user's order status
     return bot.sendMessage(chatId,
       'Feature coming soon! For now, wait for payment confirmation after placing your order.');
   }
@@ -217,7 +226,7 @@ bot.on('message', (msg) => {
   const chatId = msg.chat.id;
 
   // Ignore commands
-  if (msg.text.startsWith('/')) return;
+  if (msg.text && msg.text.startsWith('/')) return;
 
   if (userStates[chatId] === 'awaiting_contact') {
     const contact = msg.text.trim();
@@ -245,4 +254,53 @@ bot.on('message', (msg) => {
   }
 });
 
+// --- PAYMENT STATUS UPDATE WEBHOOK ---
+// Your payment backend should POST here when payment proof is received
+app.post('/payment-webhook', async (req, res) => {
+  try {
+    const { orderId, paymentStatus } = req.body;
+    if (!orderId || !paymentStatus) {
+      return res.status(400).send('Missing orderId or paymentStatus');
+    }
+
+    // Fetch order details from backend to get telegramId and order summary
+    const orderRes = await axios.get(`${BACKEND_URL}/api/orders/${orderId}`);
+    const order = orderRes.data;
+
+    if (!order || !order.telegramId) {
+      return res.status(404).send('Order not found or telegramId missing');
+    }
+
+    // Notify customer about payment status update
+    let statusText = '';
+    if (paymentStatus === 'paid') {
+      statusText = `Boss, nareceive ko na yung proof of payment mo for order *#${orderId}*. Salamat! Iprocess ko na agad ang order mo.`;
+    } else if (paymentStatus === 'pending') {
+      statusText = `Boss, pending pa yung payment mo for order *#${orderId}*. Hintayin lang natin ha.`;
+    } else if (paymentStatus === 'failed') {
+      statusText = `Boss, sorry pero hindi valid yung payment proof mo for order *#${orderId}*. Pakicheck ulit please.`;
+    } else {
+      statusText = `Update on order *#${orderId}*: status changed to ${paymentStatus}.`;
+    }
+
+    await bot.sendMessage(order.telegramId, statusText, { parse_mode: 'Markdown' });
+
+    // Optionally notify admin
+    await bot.sendMessage(adminId,
+      `Order #${orderId} payment status updated to *${paymentStatus}* for Telegram user ${order.telegramId}.`
+    );
+
+    return res.status(200).send('OK');
+  } catch (error) {
+    console.error('Payment webhook error:', error.message);
+    return res.status(500).send('Internal server error');
+  }
+});
+
+// Start Express server for webhook handling
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Express server running, Telegram bot webhook ready');
+});
+
+// Export bot for external use if needed
 module.exports = bot;
