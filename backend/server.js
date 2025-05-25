@@ -1,222 +1,198 @@
-require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
-const axios = require('axios');
-const mongoose = require('mongoose');
 const { Telegraf } = require('telegraf');
-const { getCategories, getProductList } = require('./data/products');
-const ordersRouter = require('./routes/orders');
+const mongoose = require('mongoose');
 const Order = require('./models/Order');
+const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
-app.use(bodyParser.json());
+app.use(cors());
+app.use(express.json());
 
-// MongoDB connection
-const MONGO_URI = process.env.MONGO_URI;
-mongoose.connect(MONGO_URI, {
+const bot = new Telegraf(process.env.BOT_TOKEN);
+
+const userCarts = {};
+const userStates = {};
+const userOrderData = {};
+const proofWaitList = {};
+const qrPending = {};
+
+const ADMIN_ID = process.env.ADMIN_ID;
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => {
-  console.error('MongoDB connection error:', err);
-  process.exit(1);
 });
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const BACKEND_URL = process.env.BACKEND_URL;
-const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${BOT_TOKEN}`;
-const ADMIN_ID = Number(process.env.ADMIN_ID);
+// BOT COMMANDS
 
-const bot = new Telegraf(BOT_TOKEN);
-app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
-bot.telegram.setWebhook(WEBHOOK_URL);
-
-// In-memory user data stores
-const userStates = {};
-const userCarts = {};
-const userOrderData = {};
-
-// Helpers
-function findProductPrice(name) {
-  const all = getCategories().flatMap(getProductList);
-  const item = all.find(p => p.name === name);
-  return item?.price || 0;
-}
-
-// Bot handlers
 bot.start(ctx => {
+  ctx.reply('Welcome to Kutabare Online Shop! Type /order to start shopping.');
+});
+
+bot.command('order', ctx => {
   const id = ctx.chat.id;
-  userStates[id] = null;
-  userOrderData[id] = {};
-  ctx.replyWithMarkdown(`Yo! Welcome sa *Kutabare Online Shop*!`, {
+  userCarts[id] = {};
+  userStates[id] = 'selecting_category';
+  ctx.reply('Please choose a category:', {
     reply_markup: {
-      inline_keyboard: [
-        [{ text: '🛒 View Products', callback_data: 'view_products' }],
-        [{ text: '📦 My Orders', callback_data: 'my_orders' }]
-      ]
-    }
+      keyboard: [
+        ['Cock Rings & Toys', 'Lubes & Condoms'],
+        ['Performance Enhancers', 'Spicy Accessories'],
+        ['Essentials'],
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
   });
 });
 
-bot.on('callback_query', async ctx => {
+bot.hears(['Cock Rings & Toys', 'Lubes & Condoms', 'Performance Enhancers', 'Spicy Accessories', 'Essentials'], ctx => {
   const id = ctx.chat.id;
-  const data = ctx.callbackQuery.data;
+  userStates[id] = 'selecting_product';
+  userOrderData[id] = userOrderData[id] || {};
+  userOrderData[id].category = ctx.message.text;
 
-  if (data === 'view_products') {
-    const buttons = getCategories().map(c => [{ text: c, callback_data: `cat_${c}` }]);
-    return ctx.editMessageText('Pili ka ng category:', {
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'back_main' }]] }
-    });
-  }
-
-  if (data.startsWith('cat_')) {
-    const cat = data.replace('cat_', '');
-    const items = getProductList(cat);
-    const buttons = items.map(p => [{
-      text: `${p.name} - ₱${p.price}${p.variants ? ' ▶' : ''}`,
-      callback_data: p.variants ? `variants_${p.name}` : `add_${p.name}_noVariant`
-    }]);
-    return ctx.editMessageText(`🧃 *${cat}*`, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
-    });
-  }
-
-  if (data.startsWith('variants_')) {
-    const name = data.replace('variants_', '');
-    const all = getCategories().flatMap(getProductList);
-    const prod = all.find(p => p.name === name);
-    const price = prod?.price || 0;
-    const buttons = prod.variants.map(v => [{ text: `${v} - ₱${price}`, callback_data: `add_${name}_${v}` }]);
-    return ctx.editMessageText(`Pili ng variant for *${name}*`, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [...buttons, [{ text: '⬅ Back', callback_data: 'view_products' }]] }
-    });
-  }
-
-  if (data.startsWith('add_')) {
-    const [_, name, variant] = data.split('_');
-    const key = `${name}_${variant}`;
-    userCarts[id] = userCarts[id] || {};
-    userCarts[id][key] = (userCarts[id][key] || 0) + 1;
-
-    await ctx.answerCbQuery(`✅ Added ${name} (${variant})`);
-    return ctx.editMessageReplyMarkup({
-      inline_keyboard: [
-        [{ text: '🛒 View Products', callback_data: 'view_products' }],
-        [{ text: '🚚 Checkout', callback_data: 'checkout' }]
-      ]
-    });
-  }
-
-  if (data === 'checkout') {
-    if (!userCarts[id] || Object.keys(userCarts[id]).length === 0) {
-      return ctx.answerCbQuery('Empty cart.');
-    }
-    userStates[id] = 'awaiting_delivery_option';
-    return ctx.editMessageText('Pili ng delivery method:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Pickup', callback_data: 'delivery_pickup' }],
-          [{ text: 'Same-day Delivery', callback_data: 'delivery_sdd' }]
-        ]
-      }
-    });
-  }
-
-  if (data.startsWith('delivery_')) {
-    userOrderData[id].delivery = data.split('_')[1];
-    userStates[id] = 'awaiting_contact';
-    return ctx.editMessageText('Pakibigay ng *contact info* (Name, Number, Address):', {
-      parse_mode: 'Markdown'
-    });
-  }
-
-  if (data === 'back_main') {
-    return ctx.editMessageText('Back to main menu', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🛒 View Products', callback_data: 'view_products' }],
-          [{ text: '📦 My Orders', callback_data: 'my_orders' }]
-        ]
-      }
-    });
-  }
-
-  await ctx.answerCbQuery();
-});
-
-bot.on('message', async ctx => {
-  const id = ctx.chat.id;
-
-  if (userStates[id] !== 'awaiting_contact') return; // only handle contact info here
-
-  userOrderData[id].contact = ctx.message.text;
-
-  const cart = userCarts[id];
-  if (!cart || Object.keys(cart).length === 0) {
-    await ctx.reply('Your cart is empty. Please add products first.');
-    userStates[id] = null;
-    return;
-  }
-
-  const lines = Object.entries(cart).map(([key, qty]) => {
-    const [name, variant] = key.split('_');
-    const price = findProductPrice(name);
-    return `${name} (${variant}) x${qty} - ₱${qty * price}`;
-  }).join('\n');
-
-  const total = Object.entries(cart).reduce((sum, [key, qty]) => {
-    const [name] = key.split('_');
-    return sum + qty * findProductPrice(name);
-  }, 0);
-
-  const orderData = {
-    telegramId: id,
-    items: Object.entries(cart).map(([key, qty]) => {
-      const [name, variant] = key.split('_');
-      return { name, variant, quantity: qty };
-    }),
-    contact: userOrderData[id].contact,
-    deliveryOption: userOrderData[id].delivery || 'Pickup',
-    total
+  // Normally you'd fetch from DB based on category
+  const sampleProducts = {
+    'Cock Rings & Toys': ['Cock Ring - ₱80', 'Cock Ring Vibrator - ₱60'],
+    'Lubes & Condoms': ['Monogatari Lube - ₱120', '001 Condom - ₱90'],
+    'Performance Enhancers': ['Maxman Tab - ₱40'],
+    'Spicy Accessories': ['Delay Plug - ₱200'],
+    'Essentials': ['Insulin Syringe - ₱20'],
   };
 
-  try {
-    // Save order to MongoDB
+  const items = sampleProducts[ctx.message.text] || [];
+  const buttons = items.map(item => [item]);
+  buttons.push(['Back to Categories', 'Checkout']);
+
+  ctx.reply('Select a product:', {
+    reply_markup: {
+      keyboard: buttons,
+      resize_keyboard: true,
+    },
+  });
+});
+
+bot.hears('Back to Categories', ctx => {
+  userStates[ctx.chat.id] = 'selecting_category';
+  ctx.reply('Choose another category:', {
+    reply_markup: {
+      keyboard: [
+        ['Cock Rings & Toys', 'Lubes & Condoms'],
+        ['Performance Enhancers', 'Spicy Accessories'],
+        ['Essentials'],
+      ],
+      resize_keyboard: true,
+    },
+  });
+});
+
+bot.hears('Checkout', async ctx => {
+  const id = ctx.chat.id;
+  const cart = userCarts[id] || {};
+  const items = Object.entries(cart);
+  if (!items.length) return ctx.reply('Cart is empty. Add products first.');
+
+  const lines = items.map(([name, qty]) => `${qty}x ${name}`).join('\n');
+  ctx.reply(`Items:\n${lines}\n\nSend your delivery option:\n- Pick up\n- Same-day delivery`);
+  userStates[id] = 'collecting_delivery';
+});
+
+bot.on('text', async ctx => {
+  const id = ctx.chat.id;
+  const state = userStates[id];
+  const text = ctx.message.text;
+
+  if (state === 'selecting_product') {
+    if (text === 'Checkout' || text === 'Back to Categories') return;
+
+    const name = text.split(' - ')[0];
+    userCarts[id] = userCarts[id] || {};
+    userCarts[id][name] = (userCarts[id][name] || 0) + 1;
+
+    return ctx.reply(`${name} added! Type more or press Checkout.`);
+  }
+
+  if (state === 'collecting_delivery') {
+    userOrderData[id].deliveryOption = text;
+    userStates[id] = 'collecting_contact';
+    return ctx.reply('Send your contact number:');
+  }
+
+  if (state === 'collecting_contact') {
+    userOrderData[id].contact = text;
+
+    const cart = userCarts[id] || {};
+    const orderData = {
+      telegramId: id,
+      items: Object.entries(cart).map(([name, qty]) => ({ name, quantity: qty })),
+      contact: userOrderData[id].contact,
+      deliveryOption: userOrderData[id].deliveryOption,
+    };
+
+    const total = Object.values(cart).reduce((acc, qty, i) => acc + qty * 100, 0);
+    const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
+
     const newOrder = new Order(orderData);
     await newOrder.save();
 
-    // Notify user
     await ctx.replyWithMarkdown(
       `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
       `Hintayin ang QR code for payment. Salamat boss!`
     );
 
-    // Notify admin
     await bot.telegram.sendMessage(ADMIN_ID,
-      `New order:\nTotal: ₱${total}\nContact: ${orderData.contact}\nDelivery: ${orderData.deliveryOption}`
+      `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${orderData.contact}\nDelivery: ${orderData.deliveryOption}\n\n` +
+      `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
     );
 
-    // Reset user session data
+    qrPending[newOrder._id] = id;
     userCarts[id] = {};
     userOrderData[id] = {};
     userStates[id] = null;
-
-  } catch (error) {
-    console.error('Error saving order:', error);
-    await ctx.reply('Order failed. Try again.');
   }
 });
 
-// Use orders router
-app.use('/api/orders', ordersRouter);
+bot.on('photo', async ctx => {
+  const id = ctx.chat.id;
 
-// Start server
-const PORT = process.env.PORT;
-if (!PORT) throw new Error('PORT is not defined');
+  // ADMIN uploads QR
+  if (id == ADMIN_ID && ctx.message.caption?.startsWith('QR:')) {
+    const orderId = ctx.message.caption.split('QR:')[1].trim();
+    const order = await Order.findById(orderId);
+    if (!order) return ctx.reply('Invalid order ID');
 
-app.listen(PORT, () => {
-  console.log(`Kutabare backend live on ${PORT}`);
+    const fileId = ctx.message.photo.pop().file_id;
+    await bot.telegram.sendPhoto(order.telegramId, fileId, {
+      caption: 'Eto na ang QR boss. Send proof after bayad.',
+    });
+
+    proofWaitList[order.telegramId] = orderId;
+    return ctx.reply('QR sent to customer. Awaiting proof.');
+  }
+
+  // CUSTOMER uploads proof
+  if (proofWaitList[id]) {
+    const orderId = proofWaitList[id];
+    const fileId = ctx.message.photo.pop().file_id;
+
+    const order = await Order.findById(orderId);
+    if (!order) return ctx.reply('Invalid order.');
+
+    order.proofImage = fileId;
+    order.status = 'Pending Confirmation';
+    await order.save();
+
+    await ctx.reply('Proof received! Wait for confirmation.');
+    await bot.telegram.sendMessage(ADMIN_ID, `Proof submitted for order ${orderId}.`);
+    delete proofWaitList[id];
+  }
+});
+
+// START BOT
+bot.launch();
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Server running');
 });
