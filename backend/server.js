@@ -34,21 +34,58 @@ mongoose.connect(process.env.MONGO_URI, {
   console.error('MongoDB connection error:', err);
 });
 
-// Categories and sample products map
+// Categories and products list
 const categories = [
   { key: 'CockRings', label: 'Cock Rings & Toys' },
-  { key: 'Lubes', label: 'Lubes & Condoms' },
+  { key: 'LubesCondoms', label: 'Lubes & Condoms' },
   { key: 'Performance', label: 'Performance Enhancers' },
   { key: 'Spicy', label: 'Spicy Accessories' },
   { key: 'Essentials', label: 'Essentials' },
 ];
 
+// Your full product list with variants where applicable
 const sampleProducts = {
-  CockRings: ['Cock Ring - ₱80', 'Cock Ring Vibrator - ₱60'],
-  Lubes: ['Monogatari Lube - ₱120', '001 Condom - ₱90'],
-  Performance: ['Maxman Tab - ₱40'],
-  Spicy: ['Delay Plug - ₱200'],
-  Essentials: ['Insulin Syringe - ₱20'],
+  CockRings: [
+    'Cock Ring - Pack of 3 - ₱80',
+    'Cock Ring Vibrator - ₱60',
+    'Spikey Jelly (Red) - ₱160',
+    'Spikey Jelly (Black) - ₱160',
+    '"Th Bolitas" Jelly - ₱160',
+    'Portable Wired Vibrator Egg - ₱130',
+    '7 Inches African Version Dildo - ₱270',
+    'Delay Collar - ₱200',
+    'Delay Ejaculation Buttplug - ₱200',
+  ],
+  LubesCondoms: [
+    'Monogatari Lube Tube - ₱120',
+    'Monogatari Lube Pinhole - ₱120',
+    'Monogatari Flavored Lube (Peach) - ₱200',
+    'Monogatari Flavored Lube (Strawberry) - ₱200',
+    'Monogatari Flavored Lube (Cherry) - ₱200',
+    'Ultra thin 001 Condom (Black) - ₱90',
+    'Ultra thin 001 Condom (Long Battle) - ₱90',
+    'Ultra thin 001 Condom (Blue) - ₱90',
+    'Ultra thin 001 Condom (Naked Pleasure) - ₱90',
+    'Ultra thin 001 Condom (Granule Passion) - ₱90',
+    'Mouth Fresheners (Peach) - ₱90',
+    'Mouth Fresheners (Mint) - ₱90',
+  ],
+  Performance: [
+    'Maxman per Tab - ₱40',
+    'Maxman per Pad (₱50 discount) - ₱400',
+  ],
+  Spicy: [
+    'Eucalyptus Menthol Food Grade (15-20) - ₱1000',
+    'Eucalyptus Menthol Food Grade (25-30) - ₱1500',
+    'Eucalyptus Menthol Food Grade (35-40) - ₱2000',
+  ],
+  Essentials: [
+    'Insulin Syringe - ₱20 each',
+    'Sterile Water for Injection - ₱15',
+    'Masturbator Cup (Yellow - Mouth) - ₱120',
+    'Masturbator Cup (Gray - Arse) - ₱120',
+    'Masturbator Cup (Black - Vagina) - ₱120',
+  ],
 };
 
 // /start command
@@ -165,70 +202,68 @@ bot.on('callback_query', async ctx => {
     userOrderData[id].deliveryOption = deliveryOption;
     userStates[id] = 'collecting_contact';
 
-    // Ask user to share their contact using Telegram native button
-    await bot.telegram.sendMessage(id, 'Please share your contact number:', {
-      reply_markup: {
-        keyboard: [
-          [{ text: 'Share Contact Number', request_contact: true }],
-        ],
-        one_time_keyboard: true,
-        resize_keyboard: true,
-      },
-    });
+    // Instead of native share contact, ask user to type their number
+    await bot.telegram.sendMessage(id, 'Please type your contact number (e.g., 09171234567 or +639171234567):');
     await ctx.answerCbQuery();
     return;
   }
 });
 
-// Remove old manual phone input handler (commented out)
-// bot.on('text', async ctx => {
-//   ... your old manual phone input handling ...
-// });
-
-// New handler for native Telegram contact sharing
-bot.on('contact', async ctx => {
+// Handle text input for contact number (instead of native share contact)
+bot.on('text', async ctx => {
   const id = ctx.from.id;
 
-  if (userStates[id] !== 'collecting_contact') return;
+  if (userStates[id] === 'collecting_contact') {
+    const phone = ctx.message.text.trim();
 
-  const contact = ctx.message.contact.phone_number;
-  userOrderData[id].contact = contact;
+    if (!isValidPhoneNumber(phone)) {
+      return ctx.reply('Invalid phone number format. Please enter a valid number (digits only, optional leading +).');
+    }
 
-  const cart = userCarts[id] || {};
-  const orderData = {
-    telegramId: id,
-    items: Object.entries(cart).map(([name, qty]) => ({ name, quantity: qty })),
-    contact: contact,
-    deliveryOption: userOrderData[id].deliveryOption,
-  };
+    userOrderData[id].contact = phone;
 
-  let total = 0;
-  for (const [name, qty] of Object.entries(cart)) {
-    const priceMatch = name.match(/₱(\d+)/);
-    const price = priceMatch ? parseInt(priceMatch[1]) : 0;
-    total += price * qty;
+    const cart = userCarts[id] || {};
+    const orderData = {
+      telegramId: id,
+      items: Object.entries(cart).map(([name, qty]) => ({ name, quantity: qty })),
+      contact: phone,
+      deliveryOption: userOrderData[id].deliveryOption,
+    };
+
+    let total = 0;
+    for (const [name, qty] of Object.entries(cart)) {
+      const priceMatch = name.match(/₱(\d+)/);
+      const price = priceMatch ? parseInt(priceMatch[1]) : 0;
+      total += price * qty;
+    }
+
+    const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
+
+    const newOrder = new Order(orderData);
+    await newOrder.save();
+
+    await ctx.replyWithMarkdown(
+      `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
+      `Hintayin ang QR code for payment. Salamat boss!`
+    );
+
+    await bot.telegram.sendMessage(ADMIN_ID,
+      `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${phone}\nDelivery: ${orderData.deliveryOption}\n\n` +
+      `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
+    );
+
+    qrPending[newOrder._id] = id;
+    userCarts[id] = {};
+    userOrderData[id] = {};
+    userStates[id] = null;
+
+  } else {
+    // Allow other messages to continue normal flow
+    // or you can handle other commands here if needed
   }
-
-  const lines = orderData.items.map(i => `${i.quantity}x ${i.name}`).join('\n');
-
-  const newOrder = new Order(orderData);
-  await newOrder.save();
-
-  await ctx.replyWithMarkdown(
-    `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
-    `Hintayin ang QR code for payment. Salamat boss!`
-  );
-
-  await bot.telegram.sendMessage(ADMIN_ID,
-    `New order:\nOrder ID: ${newOrder._id}\nTotal: ₱${total}\nContact: ${contact}\nDelivery: ${orderData.deliveryOption}\n\n` +
-    `Upload QR by replying with a photo and caption: QR:${newOrder._id}`
-  );
-
-  qrPending[newOrder._id] = id;
-  userCarts[id] = {};
-  userOrderData[id] = {};
-  userStates[id] = null;
 });
+
+// Remove old contact handler (for native Telegram contact sharing) - no longer used
 
 // Handle photos for QR and proof as before (no change needed)
 bot.on('photo', async ctx => {
