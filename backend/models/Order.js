@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const OrderSchema = new mongoose.Schema({
   telegramId: {
     type: Number,
@@ -6,11 +8,11 @@ const OrderSchema = new mongoose.Schema({
   items: [
     {
       name: String,
-      variant: String,  // add variant here if needed
+      variant: String,    // added variant
       quantity: Number,
     },
   ],
-  contact: {  // or rename to phone to match frontend
+  phone: {               // renamed from contact to phone
     type: String,
     required: true,
   },
@@ -18,7 +20,7 @@ const OrderSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  total: {  // add total price if you want to store it
+  total: {               // added total price
     type: Number,
   },
   status: {
@@ -26,9 +28,11 @@ const OrderSchema = new mongoose.Schema({
     default: 'Pending Payment',
   },
   proofImage: {
-    type: String, // Telegram file_id
+    type: String,       // Telegram file_id for proof of payment
   },
-  qrFile: {   // add if you want to store QR image file_id or URL
+  qrFile: {              // added qrFile for QR code upload
     type: String,
   },
 }, { timestamps: true });
+
+module.exports = mongoose.model('Order', OrderSchema);
