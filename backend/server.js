@@ -13,6 +13,10 @@ const BACKEND_URL = process.env.BACKEND_URL;
 const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${BOT_TOKEN}`;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
+const bot = new Telegraf(BOT_TOKEN);
+app.use(bot.webhookCallback(`/bot${BOT_TOKEN}`));
+bot.telegram.setWebhook(WEBHOOK_URL);
+
 
 // In-memory store
 const userStates = {}, userCarts = {}, userOrderData = {};
