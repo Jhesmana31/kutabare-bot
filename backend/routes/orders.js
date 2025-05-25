@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const Order = require('../models/Order');
+const Order = require('../models/order');
 
 const router = express.Router();
 
