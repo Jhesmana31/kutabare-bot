@@ -140,59 +140,65 @@ bot.on('callback_query', async ctx => {
 
 bot.on('message', async ctx => {
   const id = ctx.chat.id;
-  if (userStates[id] !== 'awaiting_contact') return;
-  userOrderData[id].contact = ctx.message.text;
-
+  
+  if (userStates[id] !== 'awaiting_contact') return;  // Only handle when expecting contact info
+  
+  userOrderData[id].contact = ctx.message.text;  // Save user contact info
+  
   const cart = userCarts[id];
-  const lines = Object.entries(cart).map(([k, q]) => {
-    const [n, v] = k.split('_');
-    const price = findProductPrice(n);
-    return `${n} (${v}) x${q} - ₱${q * price}`;
+  if (!cart || Object.keys(cart).length === 0) {
+    await ctx.reply('Your cart is empty. Please add products first.');
+    userStates[id] = null;
+    return;
+  }
+
+  // Create a readable order summary
+  const lines = Object.entries(cart).map(([key, qty]) => {
+    const [name, variant] = key.split('_');
+    const price = findProductPrice(name);
+    return `${name} (${variant}) x${qty} - ₱${qty * price}`;
   }).join('\n');
 
-  const total = Object.entries(cart).reduce((sum, [k, q]) => {
-    const [n] = k.split('_');
-    return sum + q * findProductPrice(n);
+  // Calculate total price
+  const total = Object.entries(cart).reduce((sum, [key, qty]) => {
+    const [name] = key.split('_');
+    return sum + qty * findProductPrice(name);
   }, 0);
 
-  const order = {
+  // Build order object to match your API
+  const orderPayload = {
     telegramId: id,
-    cart,
+    items: Object.entries(cart).map(([key, qty]) => {
+      const [name, variant] = key.split('_');
+      return { name, variant, quantity: qty };
+    }),
     contact: userOrderData[id].contact,
-    delivery: userOrderData[id].delivery,
+    deliveryOption: userOrderData[id].delivery || 'Pickup',
     total
   };
 
   try {
-    await axios.post(`${BACKEND_URL}/api/orders`, order);
-    await ctx.replyWithMarkdown(`✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\nHintayin ang QR code for payment. Salamat boss!`);
-    await bot.telegram.sendMessage(ADMIN_ID,
-      `New order:\nTotal: ₱${total}\nContact: ${order.contact}\nDelivery: ${order.delivery}`
+    await axios.post(`${BACKEND_URL}/api/orders`, orderPayload);
+
+    await ctx.replyWithMarkdown(
+      `✅ Order received!\n\n*Summary:*\n${lines}\n\n*Total:* ₱${total}\n\n` +
+      `Hintayin ang QR code for payment. Salamat boss!`
     );
+
+    await bot.telegram.sendMessage(ADMIN_ID,
+      `New order:\nTotal: ₱${total}\nContact: ${orderPayload.contact}\nDelivery: ${orderPayload.deliveryOption}`
+    );
+
+    // Clear user cart and state
     userCarts[id] = {};
     userOrderData[id] = {};
     userStates[id] = null;
-  } catch (e) {
-    console.error('Order error:', e.message);
+
+  } catch (error) {
+    console.error('Order error:', error.message);
     await ctx.reply('Order failed. Try again.');
   }
 });
-
-app.post('/payment-webhook', async (req, res) => {
-  const { orderId, paymentStatus } = req.body;
-  try {
-    const { data: order } = await axios.get(`${BACKEND_URL}/api/orders/${orderId}`);
-    if (!order?.telegramId) return res.status(404).send('Not found');
-    const msg = paymentStatus === 'paid'
-      ? `✅ Bayad confirmed. Preparing na, boss!`
-      : `❌ Payment failed. Try ulit.`;
-    await bot.telegram.sendMessage(order.telegramId, msg);
-    res.send('OK');
-  } catch (e) {
-    res.status(500).send('Error');
-  }
-});
-
 // Attach the orders routes
 app.use('/api/orders', ordersRouter);  // <-- added this
 
