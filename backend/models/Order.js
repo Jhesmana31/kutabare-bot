@@ -1,20 +1,38 @@
 const mongoose = require('mongoose');
 
-const ItemSchema = new mongoose.Schema({
-  name: String,
-  variant: { type: String, default: 'noVariant' },
-  quantity: Number,
-});
-
 const OrderSchema = new mongoose.Schema({
-  telegramId: { type: Number, required: true },
-  items: [ItemSchema],
-  contact: String,
-  deliveryOption: { type: String, default: 'Pickup' },
+  telegramId: String,
+  customerName: String,
+  contactNumber: String,
+  address: String,
+  deliveryOption: String,
+  items: [
+    {
+      product: String,
+      variant: String,
+      quantity: Number,
+      price: Number
+    }
+  ],
   total: Number,
-  createdAt: { type: Date, default: Date.now },
+  paymentStatus: {
+    type: String,
+    enum: ['Pending', 'Paid'],
+    default: 'Pending'
+  },
+  status: {
+    type: String,
+    enum: ['Pending', 'Confirmed', 'In Progress', 'Delivered'],
+    default: 'Pending'
+  },
+  proofImage: {
+    type: String,
+    default: ''
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
-const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
-
-module.exports = Order;
+module.exports = mongoose.model('Order', OrderSchema);
