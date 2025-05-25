@@ -9,7 +9,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 app.use(bodyParser.json());
 
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
 const ADMIN_ID = '7699555744';
 
@@ -52,146 +55,157 @@ const userOrderData = {};
 const qrPending = {};
 const proofWaitList = {};
 
-// Helper: generate category inline keyboard
-function categoryInlineKeyboard() {
-  return Markup.inlineKeyboard(
-    Object.keys(categories).map(cat => Markup.button.callback(cat, `cat_${cat}`))
-  );
-}
-
-// Helper: generate product inline keyboard for a category
-function productInlineKeyboard(category) {
-  const buttons = categories[category].map(p => Markup.button.callback(p.name, `prod_${category}|${p.name}`));
-  buttons.push(Markup.button.callback('Back', 'back_to_categories'));
-  return Markup.inlineKeyboard(buttons, { columns: 2 });
-}
-
-// Helper: generate variant inline keyboard for a product
-function variantInlineKeyboard(category, productName) {
-  const product = categories[category].find(p => p.name === productName);
-  if (!product || !product.variants) return null;
-  const buttons = product.variants.map(v => Markup.button.callback(v, `variant_${category}|${productName}|${v}`));
-  buttons.push(Markup.button.callback('Back', `prodback_${category}`));
-  return Markup.inlineKeyboard(buttons, { columns: 2 });
-}
-
-// Helper: generate checkout inline keyboard
-function checkoutInlineKeyboard() {
-  return Markup.inlineKeyboard([
-    Markup.button.callback('Pick up', 'delivery_pickup'),
-    Markup.button.callback('Same-day Delivery', 'delivery_sameday'),
-    Markup.button.callback('Back', 'back_to_categories')
-  ], { columns: 2 });
-}
-
 bot.start(async (ctx) => {
   const id = ctx.from.id.toString();
   userCarts[id] = [];
   userStates[id] = 'CATEGORY_SELECTION';
-  await ctx.reply('Welcome to Kutabare Online Shop! Pili ka muna ng category:', categoryInlineKeyboard());
+  await ctx.reply('Welcome to Kutabare Online Shop! Pili ka muna ng category:', categoryInlineButtons());
 });
 
-bot.on('callback_query', async (ctx) => {
+function categoryInlineButtons() {
+  // One button per row, with category name
+  const buttons = Object.keys(categories).map(cat => [Markup.button.callback(cat, `category_${cat}`)]);
+  // Add View Cart and Checkout buttons
+  buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
+  buttons.push([Markup.button.callback('✅ Checkout', 'checkout')]);
+  return Markup.inlineKeyboard(buttons);
+}
+
+function productInlineButtons(category) {
+  const items = categories[category];
+  const buttons = items.map(p => [Markup.button.callback(`${p.name} - ₱${p.price}`, `product_${category}_${p.name}`)]);
+  buttons.push([Markup.button.callback('⬅️ Back to Categories', 'back_to_categories')]);
+  buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
+  buttons.push([Markup.button.callback('✅ Checkout', 'checkout')]);
+  return Markup.inlineKeyboard(buttons);
+}
+
+function variantInlineButtons(productName, category) {
+  const product = categories[category].find(p => p.name === productName);
+  if (!product || !product.variants) return null;
+  const buttons = product.variants.map(v => [Markup.button.callback(v, `variant_${category}_${productName}_${v}`)]);
+  buttons.push([Markup.button.callback('⬅️ Back to Products', `back_to_products_${category}`)]);
+  return Markup.inlineKeyboard(buttons);
+}
+
+function cartSummary(id) {
+  const cart = userCarts[id] || [];
+  if (cart.length === 0) return 'Your cart is empty.';
+  let total = 0;
+  let summary = 'Your cart items:\n\n';
+  cart.forEach((item, idx) => {
+    summary += `${idx + 1}. ${item.name} - ₱${item.price}\n`;
+    total += item.price;
+  });
+  summary += `\nTotal: ₱${total}`;
+  return summary;
+}
+
+bot.action(/category_(.+)/, async (ctx) => {
+  const category = ctx.match[1];
   const id = ctx.from.id.toString();
-  const data = ctx.callbackQuery.data;
-  const state = userStates[id] || 'CATEGORY_SELECTION';
-
-  // Handle back to categories
-  if (data === 'back_to_categories') {
-    userStates[id] = 'CATEGORY_SELECTION';
-    await ctx.editMessageText('Balik sa categories:', categoryInlineKeyboard());
-    return ctx.answerCbQuery();
-  }
-
-  // Category selected
-  if (data.startsWith('cat_')) {
-    const category = data.slice(4);
-    if (!categories[category]) return ctx.answerCbQuery('Invalid category.');
-    userStates[id] = `PRODUCT_SELECTION:${category}`;
-    await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineKeyboard(category));
-    return ctx.answerCbQuery();
-  }
-
-  // Back to products from variants
-  if (data.startsWith('prodback_')) {
-    const category = data.slice(8);
-    if (!categories[category]) return ctx.answerCbQuery('Invalid category.');
-    userStates[id] = `PRODUCT_SELECTION:${category}`;
-    await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineKeyboard(category));
-    return ctx.answerCbQuery();
-  }
-
-  // Product selected
-  if (data.startsWith('prod_')) {
-    const [_, payload] = data.split('_');
-    const [category, productName] = payload.split('|');
-    const product = categories[category]?.find(p => p.name === productName);
-    if (!product) return ctx.answerCbQuery('Invalid product.');
-
-    if (product.variants) {
-      userStates[id] = `VARIANT_SELECTION:${category}|${productName}`;
-      await ctx.editMessageText('Pili ng variant:', variantInlineKeyboard(category, productName));
-      return ctx.answerCbQuery();
-    } else {
-      userCarts[id].push({ name: product.name, price: product.price });
-      userStates[id] = 'CATEGORY_SELECTION';
-      await ctx.editMessageText(`${product.name} added to cart!`, categoryInlineKeyboard());
-      return ctx.answerCbQuery('Added to cart!');
-    }
-  }
-
-  // Variant selected
-  if (data.startsWith('variant_')) {
-    const [_, payload] = data.split('_');
-    const [category, productName, variant] = payload.split('|');
-    const product = categories[category]?.find(p => p.name === productName);
-    if (!product || !product.variants.includes(variant)) return ctx.answerCbQuery('Invalid variant.');
-
-    userCarts[id].push({ name: `${productName} - ${variant}`, price: product.price });
-    userStates[id] = 'CATEGORY_SELECTION';
-    await ctx.editMessageText(`${productName} (${variant}) added to cart!`, categoryInlineKeyboard());
-    return ctx.answerCbQuery('Added to cart!');
-  }
-
-  // Delivery options
-  if (data === 'delivery_pickup' || data === 'delivery_sameday') {
-    if (!userCarts[id] || userCarts[id].length === 0) {
-      userStates[id] = 'CATEGORY_SELECTION';
-      await ctx.editMessageText('Wala ka pang laman sa cart! Balik sa categories:', categoryInlineKeyboard());
-      return ctx.answerCbQuery();
-    }
-    const deliveryOption = data === 'delivery_pickup' ? 'Pick up' : 'Same-day Delivery';
-    userOrderData[id] = { deliveryOption };
-    userStates[id] = 'AWAITING_CONTACT';
-    await ctx.editMessageText(`Pili ng delivery option: ${deliveryOption}\n\nPlease enter your contact number:`);
-    return ctx.answerCbQuery();
-  }
-
-  ctx.answerCbQuery();
+  userStates[id] = `PRODUCT_SELECTION:${category}`;
+  await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineButtons(category));
 });
 
+bot.action(/product_(.+)_(.+)/, async (ctx) => {
+  const category = ctx.match[1];
+  const productName = ctx.match[2];
+  const id = ctx.from.id.toString();
+  const product = categories[category].find(p => p.name === productName);
+  if (!product) return ctx.answerCbQuery('Product not found.');
+
+  if (product.variants) {
+    userStates[id] = `VARIANT_SELECTION:${productName}:${category}`;
+    await ctx.editMessageText(`Pili ng variant para sa ${productName}:`, variantInlineButtons(productName, category));
+  } else {
+    userCarts[id].push({ name: productName, price: product.price });
+    userStates[id] = 'CATEGORY_SELECTION';
+    await ctx.editMessageText(`${productName} added to cart!`, categoryInlineButtons());
+  }
+  await ctx.answerCbQuery();
+});
+
+bot.action(/variant_(.+)_(.+)_(.+)/, async (ctx) => {
+  const category = ctx.match[1];
+  const productName = ctx.match[2];
+  const variant = ctx.match[3];
+  const id = ctx.from.id.toString();
+
+  const product = categories[category].find(p => p.name === productName);
+  if (!product || !product.variants.includes(variant)) {
+    return ctx.answerCbQuery('Invalid variant.');
+  }
+
+  userCarts[id].push({ name: `${productName} - ${variant}`, price: product.price });
+  userStates[id] = 'CATEGORY_SELECTION';
+  await ctx.editMessageText(`${productName} (${variant}) added to cart!`, categoryInlineButtons());
+  await ctx.answerCbQuery();
+});
+
+bot.action('back_to_categories', async (ctx) => {
+  const id = ctx.from.id.toString();
+  userStates[id] = 'CATEGORY_SELECTION';
+  await ctx.editMessageText('Balik sa categories:', categoryInlineButtons());
+  await ctx.answerCbQuery();
+});
+
+bot.action(/back_to_products_(.+)/, async (ctx) => {
+  const category = ctx.match[1];
+  const id = ctx.from.id.toString();
+  userStates[id] = `PRODUCT_SELECTION:${category}`;
+  await ctx.editMessageText(`Pili ng product sa ${category}:`, productInlineButtons(category));
+  await ctx.answerCbQuery();
+});
+
+bot.action('view_cart', async (ctx) => {
+  const id = ctx.from.id.toString();
+  const summary = cartSummary(id);
+  await ctx.answerCbQuery(); // remove loading
+  await ctx.reply(summary);
+});
+
+bot.action('checkout', async (ctx) => {
+  const id = ctx.from.id.toString();
+  if (!userCarts[id] || userCarts[id].length === 0) {
+    await ctx.answerCbQuery('Wala ka pang laman sa cart!');
+    return;
+  }
+  userStates[id] = 'DELIVERY_OPTION';
+  await ctx.editMessageText('Pili ng delivery option:', Markup.inlineKeyboard([
+    [Markup.button.callback('Pick up', 'delivery_pickup')],
+    [Markup.button.callback('Same-day Delivery', 'delivery_sameday')],
+    [Markup.button.callback('⬅️ Back to Categories', 'back_to_categories')],
+  ]));
+  await ctx.answerCbQuery();
+});
+
+bot.action(/delivery_(.+)/, async (ctx) => {
+  const id = ctx.from.id.toString();
+  const deliveryOption = ctx.match[1] === 'pickup' ? 'Pick up' : 'Same-day Delivery';
+  userOrderData[id] = { deliveryOption };
+  userStates[id] = 'AWAITING_CONTACT';
+  await ctx.editMessageText('Please enter your contact number:');
+  await ctx.answerCbQuery();
+});
+
+// Handle plain text for contact number and proof photo, etc.
 bot.on('text', async (ctx) => {
   const id = ctx.from.id.toString();
-  const text = ctx.message.text;
   const state = userStates[id] || 'CATEGORY_SELECTION';
-
-  if (text.toLowerCase() === 'checkout') {
-    if (!userCarts[id] || userCarts[id].length === 0) {
-      return ctx.reply('Wala ka pang laman sa cart!');
-    }
-    userStates[id] = 'DELIVERY_OPTION';
-    return ctx.reply('Pili ng delivery option:', checkoutInlineKeyboard());
-  }
+  const text = ctx.message.text;
 
   if (state === 'AWAITING_CONTACT') {
     const phone = text.trim();
-    if (!phone.match(/^\+?\d{7,15}$/)) {
-      return ctx.reply('Invalid contact number. Please enter a valid phone number:');
-    }
-    const cart = userCarts[id];
+    const cart = userCarts[id] || [];
     const deliveryOption = userOrderData[id].deliveryOption;
     const total = cart.reduce((sum, item) => sum + item.price, 0);
-    const lines = cart.map(i => `• ${i.name} - ₱${i.price}`).join('\n');
+
+    if (cart.length === 0) {
+      await ctx.reply('Your cart is empty.');
+      userStates[id] = 'CATEGORY_SELECTION';
+      return;
+    }
 
     const newOrder = new Order({
       telegramId: id,
@@ -202,6 +216,7 @@ bot.on('text', async (ctx) => {
     });
     await newOrder.save();
 
+    const lines = cart.map(i => `• ${i.name} - ₱${i.price}`).join('\n');
     await ctx.reply(`Order placed! Total: ₱${total}\nWait for the QR code for payment.`);
 
     await bot.telegram.sendMessage(ADMIN_ID,
@@ -216,18 +231,13 @@ bot.on('text', async (ctx) => {
     delete userCarts[id];
     delete userStates[id];
     delete userOrderData[id];
-
-    return;
   }
-
-  // Other text inputs ignored or fallback
 });
 
-bot.on('message', async (ctx) => {
+// Admin uploads QR code, sends to customer
+bot.on('photo', async (ctx) => {
   const id = ctx.from.id.toString();
-
-  // Handle admin uploading QR code in reply to order message
-  if (ctx.chat.id.toString() === ADMIN_ID && ctx.message.reply_to_message && ctx.message.photo) {
+  if (ctx.chat.id.toString() === ADMIN_ID && ctx.message.reply_to_message) {
     const originalMessage = ctx.message.reply_to_message.text;
     const match = originalMessage.match(/Order ID: ([a-f0-9]+)/);
     if (match) {
@@ -240,13 +250,11 @@ bot.on('message', async (ctx) => {
         });
         proofWaitList[customerId] = orderId;
         delete qrPending[orderId];
-        return ctx.reply('QR sent to customer.');
+        await ctx.reply('QR sent to customer.');
       }
     }
-  }
-
-  // Handle customer sending proof of payment photo
-  if (ctx.message.photo && proofWaitList[id]) {
+  } else if (proofWaitList[id]) {
+    // Customer sends proof of payment photo
     const orderId = proofWaitList[id];
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
     const order = await Order.findById(orderId);
@@ -274,7 +282,9 @@ app.post('/orders/:id/status', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   try {
-    await bot.telegram.sendMessage(order.telegramId, `Order update:\nYour order status is now *${status}*.`, { parse_mode: 'Markdown' });
+    await bot.telegram.sendMessage(order.telegramId, `Order update:\nYour order status is now *${status}*.`, {
+      parse_mode: 'Markdown',
+    });
   } catch (err) {
     console.error('Failed to send Telegram message to customer:', err.message);
   }
