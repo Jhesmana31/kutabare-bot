@@ -11,18 +11,18 @@ app.use(express.json());
 const bot = new TelegramBot(process.env.BOT_TOKEN);
 bot.setWebHook(`${process.env.BASE_URL}/bot${process.env.BOT_TOKEN}`);
 
-// Base64-safe callback_data encoder/decoder
+// Use URL-safe encoding instead of base64
 function encodeData(type, category, product = '', variant = '') {
-  return `cb_${type}_${Buffer.from(category).toString('base64')}_${Buffer.from(product).toString('base64')}_${variant ? Buffer.from(variant).toString('base64') : ''}`;
+  return `cb_${type}_${encodeURIComponent(category)}_${encodeURIComponent(product)}_${encodeURIComponent(variant)}`;
 }
 
 function decodeData(data) {
   const [_, type, catEncoded, prodEncoded, variantEncoded] = data.split('_');
   return {
     type,
-    category: Buffer.from(catEncoded, 'base64').toString(),
-    product: Buffer.from(prodEncoded, 'base64').toString(),
-    variant: variantEncoded ? Buffer.from(variantEncoded, 'base64').toString() : null
+    category: decodeURIComponent(catEncoded),
+    product: decodeURIComponent(prodEncoded),
+    variant: variantEncoded ? decodeURIComponent(variantEncoded) : null
   };
 }
 
@@ -32,15 +32,13 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
   res.sendStatus(200);
 });
 
-// Start command
+// /start command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const buttons = categories.map(cat => [{ text: cat, callback_data: encodeData('category', cat) }]);
 
   bot.sendMessage(chatId, 'Welcome to Kutabare Online Shop! Choose a category:', {
-    reply_markup: {
-      inline_keyboard: buttons
-    }
+    reply_markup: { inline_keyboard: buttons }
   });
 });
 
@@ -64,7 +62,6 @@ bot.on('callback_query', (query) => {
     const categoryProducts = products[category];
     if (!categoryProducts) return;
 
-    // If product is an object with variants, list products by keys
     const productNames = Object.keys(categoryProducts);
 
     const buttons = productNames.map(p => [{
@@ -84,7 +81,6 @@ bot.on('callback_query', (query) => {
     const productData = products[category][product];
 
     if (typeof productData === 'object') {
-      // Show variants
       const buttons = Object.keys(productData).map(v => [{
         text: `${v} - Php ${productData[v]}`,
         callback_data: encodeData('variant', category, product, v)
@@ -97,7 +93,6 @@ bot.on('callback_query', (query) => {
         reply_markup: { inline_keyboard: buttons }
       });
     } else {
-      // No variants, add directly
       cart.add(chatId, { category, product, price: productData });
       bot.sendMessage(chatId, `✅ Added *${product}* to your cart.`, { parse_mode: 'Markdown' });
     }
