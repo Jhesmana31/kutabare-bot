@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const { Telegraf } = require('telegraf');
 const { getCategories, getProductList } = require('./data/products');
 const ordersRouter = require('./routes/orders');
-const Order = require('./models/order');
+const Order = require('./models/Order');
 
 const app = express();
 app.use(bodyParser.json());
