@@ -12,7 +12,7 @@ const products = {
     VibratorRing: { label: 'Cock Ring Vibrator', price: 60 },
     SpikeyRed: { label: 'Spikey Jelly (Red)', price: 160 },
     SpikeyBlack: { label: 'Spikey Jelly (Black)', price: 160 },
-    Bolitas: { label: 'Th Bolitas Jelly', price: 160 },
+    Bolitas: { label: 'The Bolitas Jelly', price: 160 },
     VibratorEgg: { label: 'Wired Vibrator Egg', price: 130 },
     AfricanDildo: { label: '7 Inches African Dildo', price: 270 },
     Masturbator: {
