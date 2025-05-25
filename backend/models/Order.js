@@ -1,38 +1,31 @@
 const mongoose = require('mongoose');
 
 const OrderSchema = new mongoose.Schema({
-  telegramId: String,
-  customerName: String,
-  contactNumber: String,
-  address: String,
-  deliveryOption: String,
+  telegramId: {
+    type: Number,
+    required: true,
+  },
   items: [
     {
-      product: String,
-      variant: String,
+      name: String,
       quantity: Number,
-      price: Number
-    }
+    },
   ],
-  total: Number,
-  paymentStatus: {
+  contact: {
     type: String,
-    enum: ['Pending', 'Paid'],
-    default: 'Pending'
+    required: true,
+  },
+  deliveryOption: {
+    type: String,
+    required: true,
   },
   status: {
     type: String,
-    enum: ['Pending', 'Confirmed', 'In Progress', 'Delivered'],
-    default: 'Pending'
+    default: 'Pending Payment',
   },
   proofImage: {
-    type: String,
-    default: ''
+    type: String, // Telegram file_id
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Order', OrderSchema);
