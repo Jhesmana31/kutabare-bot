@@ -1,76 +1,63 @@
-const products = [
-  // Cock Rings & Toys
-  { name: 'Cock Ring - Pack of 3', price: 80, category: 'Cock Rings & Toys' },
-  { name: 'Cock Ring Vibrator', price: 60, category: 'Cock Rings & Toys' },
-  { name: 'Spikey Jelly (Red)', price: 160, category: 'Cock Rings & Toys' },
-  { name: 'Spikey Jelly (Black)', price: 160, category: 'Cock Rings & Toys' },
-  { name: '"Th Bolitas" Jelly', price: 160, category: 'Cock Rings & Toys' },
-  { name: 'Portable Wired Vibrator Egg', price: 130, category: 'Cock Rings & Toys' },
-  { name: '7 Inches African Version Dildo', price: 270, category: 'Cock Rings & Toys' },
-
-  // Lubes & Condoms
-  { name: 'Monogatari Lube Tube', price: 120, category: 'Lubes & Condoms' },
-  { name: 'Monogatari Lube Pinhole', price: 120, category: 'Lubes & Condoms' },
-  {
-    name: 'Monogatari Flavored Lube',
-    price: 200,
-    category: 'Lubes & Condoms',
-    variants: ['Peach', 'Strawberry', 'Cherry']
-  },
-  {
-    name: 'Ultra thin 001 Condoms',
-    price: 90,
-    category: 'Lubes & Condoms',
-    variants: ['Black', 'Long Battle', 'Blue', 'Naked Pleasure', 'Granule Passion']
-  },
-
-  // Performance Enhancers
-  { name: 'Maxman per Tab', price: 40, category: 'Performance Enhancers' },
-  { name: 'Maxman per Pad', price: 400, category: 'Performance Enhancers' },
-
-  // Spicy Accessories
-  { name: 'Delay Collar', price: 200, category: 'Spicy Accessories' },
-  { name: 'Delay Ejaculation Buttplug', price: 200, category: 'Spicy Accessories' },
-  {
-    name: 'Masturbator Cup',
-    price: 120,
-    category: 'Spicy Accessories',
-    variants: ['Yellow (Mouth)', 'Gray (Arse)', 'Black (Vagina)']
-  },
-
-  // Essentials
-  {
-    name: 'Eucalyptus Menthol Food Grade',
-    price: 1000,
-    category: 'Essentials',
-    variants: ['15-20 (1k)', '25-30 (1.5k)', '35-40 (2k)']
-  },
-  {
-    name: 'Mouth Fresheners',
-    price: 90,
-    category: 'Essentials',
-    variants: ['Peach', 'Mint']
-  },
-  { name: 'Insulin Syringe', price: 20, category: 'Essentials' },
-  { name: 'Sterile Water for Injection', price: 15, category: 'Essentials' }
+const categories = [
+  'Cock Rings & Toys',
+  'Lubes & Condoms',
+  'Performance Enhancers',
+  'Spicy Accessories',
+  'Essentials'
 ];
 
-function getCategories() {
-  return [
-    'Cock Rings & Toys',
-    'Lubes & Condoms',
-    'Performance Enhancers',
-    'Spicy Accessories',
-    'Essentials'
-  ];
-}
-
-function getProductList(category) {
-  return products.filter(p => p.category === category);
-}
-
-module.exports = {
-  products,
-  getCategories,
-  getProductList
+const products = {
+  'Cock Rings & Toys': {
+    'Cock Ring - Pack of 3': 80,
+    'Cock Ring Vibrator': 60,
+    'Spikey Jelly (Red)': 160,
+    'Spikey Jelly (Black)': 160,
+    '"Th Bolitas" Jelly': 160,
+    'Portable Wired Vibrator Egg': 130,
+    '7 Inches African Version Dildo': 270,
+    'Masturbator Cup': {
+      'Yellow (Mouth)': 120,
+      'Gray (Arse)': 120,
+      'Black (Vagina)': 120
+    }
+  },
+  'Lubes & Condoms': {
+    'Monogatari Lube Tube': 120,
+    'Monogatari Lube Pinhole': 120,
+    'Monogatari Flavored Lube': {
+      'Peach': 200,
+      'Strawberry': 200,
+      'Cherry': 200
+    },
+    'Ultra thin 001 for men natural latex condom': {
+      'Black': 90,
+      'Long Battle': 90,
+      'Blue': 90,
+      'Naked Pleasure': 90,
+      'Granule Passion': 90
+    }
+  },
+  'Performance Enhancers': {
+    'Maxman per Tab': 40,
+    'Maxman per Pad': 400
+  },
+  'Spicy Accessories': {
+    'Delay Collar': 200,
+    'Delay Ejaculation Buttplug': 200
+  },
+  'Essentials': {
+    'Eucalyptus Menthol Food Grade': {
+      '15-20 (1k)': 1000,
+      '25-30 (1.5k)': 1500,
+      '35-40 (2k)': 2000
+    },
+    'Mouth Fresheners': {
+      'Peach': 90,
+      'Mint': 90
+    },
+    'Insulin Syringe': 20,
+    'Sterile Water for Injection': 15
+  }
 };
+
+module.exports = { categories, products };
